@@ -1,249 +1,405 @@
-let videoBuffer = [];
-const BUFFER_DURATION = 10; // seconds
-let lowerOriginalVolume = true; // New setting to control volume adjustment
+// Configuration options
+const CONFIG = {
+    numberOfRecorders: 2,
+    recordingDuration: 30, // seconds per recorder
+    startOffset: 15, // seconds between recorder starts
+    initDelay: 2000,
+    videoBitrate: 2500000,
+    defaultWrapperWidth: '600px',
+    volumeReduction: 0.05,
+    codecPreferences: ['video/webm; codecs=vp9', 'video/webm; codecs=vp8', 'video/webm']
+};
 
-function initializeReplaySystem() {
-    const videoElement = document.querySelector('video');
-    if (!videoElement) {
-        console.log('[ITR] No video element found.');
-        return;
+// Global flag to ensure only one instance
+let systemInitialized = false;
+
+class ReplaySystem {
+    constructor() {
+        this.recorders = [];
+        this.dataChunks = [];
+        this.recordingStartTimes = [];
+        this.listenerAdded = false;
+        this.isReplaying = false;
+        this.initializationInProgress = false;
     }
 
-    console.log('[ITR] Initializing media recorder...');
-    let mediaStream;
-    try {
-        if (videoElement.captureStream) {
-            mediaStream = videoElement.captureStream();
-        } else if (videoElement.mozCaptureStream) {
-            mediaStream = videoElement.mozCaptureStream();
-        } else {
-            console.log('[ITR] Video captureStream() not supported in this browser.');
-            return;
-        }
-    } catch (e) {
-        console.error('[ITR] Error capturing stream:', e);
-        return;
-    }
-
-    const options = {
-        mimeType: 'video/webm; codecs=vp9', // Adjust based on browser support
-        videoBitsPerSecond: 2500000, // Adjust as needed
-    };
-
-    let mediaRecorder;
-    try {
-        mediaRecorder = new MediaRecorder(mediaStream, options);
-    } catch (e) {
-        console.error('[ITR] Error creating MediaRecorder:', e);
-        return;
-    }
-
-    mediaRecorder.ondataavailable = (event) => {
-        console.log('[ITR] Data chunk received.');
-        if (event.data && event.data.size > 0) {
-            videoBuffer.push({
-                data: event.data,
-                timestamp: Date.now()
-            });
-        } else {
-            console.log('[ITR] Received empty data chunk.');
+    async initialize() {
+        if (this.initializationInProgress) {
+            console.log('[ITR] Initialization already in progress');
+            return false;
         }
 
-        // Remove old chunks to maintain BUFFER_DURATION buffer
-        const currentTime = Date.now();
-        const cutoffTime = currentTime - (BUFFER_DURATION * 1000);
-        videoBuffer = videoBuffer.filter(chunk => chunk.timestamp > cutoffTime);
-        console.log('[ITR] Video buffer updated. Current buffer length:', videoBuffer.length);
-    };
+        this.initializationInProgress = true;
+        console.log('[ITR] Starting initialization with delay...');
 
-    mediaRecorder.onerror = (event) => {
-        console.error('[ITR] MediaRecorder error:', event.error);
-    };
-
-    function startMediaRecorderWithRetry(retryCount = 0) {
         try {
-            mediaRecorder.start(1000); // Capture in 1-second chunks
-            console.log('[ITR] Media recorder started.');
-        } catch (e) {
-            if (e.name === 'NotSupportedError' && e.message.includes('no audio or video tracks available')) {
-                console.warn('[ITR] MediaRecorder cannot start yet. Stream not ready. Retrying...');
-                if (retryCount < 5) { // Set a maximum number of retries to prevent infinite loops
-                    setTimeout(() => {
-                        startMediaRecorderWithRetry(retryCount + 1);
-                    }, 500); // Retry after 500 milliseconds
-                } else {
-                    console.error('[ITR] MediaRecorder failed to start after multiple retries.');
-                }
-            } else {
-                console.error('[ITR] Error starting MediaRecorder:', e);
+            // Wait for the initial delay
+            await new Promise(resolve => setTimeout(resolve, CONFIG.initDelay));
+            
+            const videoElement = document.querySelector('video');
+            if (!videoElement) {
+                console.warn('[ITR] No video element found.');
+                return false;
+            }
+
+            // Check if video is actually playing
+            if (videoElement.readyState < 3) { // HAVE_FUTURE_DATA
+                console.log('[ITR] Video not ready yet, waiting for metadata...');
+                await new Promise(resolve => {
+                    videoElement.addEventListener('loadeddata', resolve, { once: true });
+                });
+            }
+
+            const mediaStream = await this.captureVideoStream(videoElement);
+            if (!mediaStream) {
+                console.warn('[ITR] Failed to capture media stream');
+                return false;
+            }
+
+            // Verify stream has tracks
+            if (!mediaStream.getTracks().length) {
+                console.warn('[ITR] Media stream has no tracks');
+                return false;
+            }
+
+            const options = await this.getBestRecordingOptions();
+            if (!options) return false;
+
+            await this.initializeRecorders(mediaStream, options);
+            this.setupKeyboardListener();
+            return true;
+        } finally {
+            this.initializationInProgress = false;
+        }
+    }
+
+    async captureVideoStream(videoElement) {
+        try {
+            let stream = null;
+            
+            // Try captureStream first
+            if (videoElement.captureStream) {
+                stream = videoElement.captureStream();
+            } else if (videoElement.mozCaptureStream) {
+                stream = videoElement.mozCaptureStream();
+            }
+
+            if (!stream) {
+                console.error('[ITR] Video captureStream() not supported');
+                return null;
+            }
+
+            // Verify stream has tracks
+            if (stream.getTracks().length === 0) {
+                console.error('[ITR] Captured stream has no tracks');
+                return null;
+            }
+
+            console.log('[ITR] Successfully captured video stream with tracks:', 
+                       stream.getTracks().map(t => t.kind).join(', '));
+            
+            return stream;
+
+        } catch (error) {
+            console.error('[ITR] Error capturing stream:', error);
+            return null;
+        }
+    }
+
+    async getBestRecordingOptions() {
+        for (const mimeType of CONFIG.codecPreferences) {
+            if (MediaRecorder.isTypeSupported(mimeType)) {
+                console.log('[ITR] Using codec:', mimeType);
+                return {
+                    mimeType,
+                    videoBitsPerSecond: CONFIG.videoBitrate
+                };
             }
         }
+        console.error('[ITR] No supported mime types found');
+        return null;
     }
 
-    startMediaRecorderWithRetry();
+    async initializeRecorders(mediaStream, options) {
+        // Clear any existing recorders
+        this.recorders = [];
+        this.dataChunks = [];
+        this.recordingStartTimes = [];
 
-    // Avoid adding multiple event listeners
-    if (!initializeReplaySystem.listenerAdded) {
-        console.log('[ITR] Adding keydown listener to focus element.');
+        for (let i = 0; i < CONFIG.numberOfRecorders; i++) {
+            try {
+                const recorder = new MediaRecorder(mediaStream, options);
+                
+                recorder.ondataavailable = (event) => {
+                    if (event.data?.size > 0) {
+                        this.dataChunks[i] = event.data;
+                        console.log(`[ITR] Data chunk received for recorder ${i}, size: ${event.data.size} bytes`);
+                    }
+                };
 
-        // Find the specific element that needs to be in focus
+                recorder.onerror = (error) => {
+                    console.error(`[ITR] MediaRecorder ${i} error:`, error);
+                };
+
+                recorder.onstart = () => {
+                    this.recordingStartTimes[i] = Date.now();
+                    console.log(`[ITR] Recorder ${i} started at ${new Date(this.recordingStartTimes[i]).toISOString()}`);
+                };
+
+                recorder.onstop = () => {
+                    console.log(`[ITR] Recorder ${i} stopped successfully`);
+                };
+
+                this.recorders.push(recorder);
+            } catch (error) {
+                console.error(`[ITR] Error creating MediaRecorder ${i}:`, error);
+                return false;
+            }
+        }
+
+        // Start recorders with offset
+        await this.startStaggeredRecording();
+        return true;
+    }
+
+    async startStaggeredRecording() {
+        // Start first recorder immediately
+        this.startRecorder(0);
+
+        // Start second recorder after offset
+        setTimeout(() => {
+            this.startRecorder(1);
+        }, CONFIG.startOffset * 1000);
+    }
+
+    startRecorder(index) {
+        const recorder = this.recorders[index];
+        
+        try {
+            if (recorder.state === 'inactive') {
+                recorder.start();
+                
+                // Schedule recorder restart after recording duration
+                setTimeout(() => {
+                    this.restartRecorder(index);
+                }, CONFIG.recordingDuration * 1000);
+            }
+        } catch (error) {
+            console.error(`[ITR] Error starting recorder ${index}:`, error);
+        }
+    }
+
+    restartRecorder(index) {
+        const recorder = this.recorders[index];
+        
+        try {
+            if (recorder.state !== 'inactive') {
+                recorder.stop();
+                // Start the recorder again after a small delay
+                setTimeout(() => {
+                    this.startRecorder(index);
+                }, 100);
+            }
+        } catch (error) {
+            console.error(`[ITR] Error restarting recorder ${index}:`, error);
+        }
+    }
+
+    getBestRecorder() {
+        const now = Date.now();
+        let bestIndex = 0;
+        let maxRecordedTime = 0;
+
+        for (let i = 0; i < this.recorders.length; i++) {
+            if (this.recordingStartTimes[i] && this.dataChunks[i]) {
+                const recordedTime = now - this.recordingStartTimes[i];
+                if (recordedTime > maxRecordedTime) {
+                    maxRecordedTime = recordedTime;
+                    bestIndex = i;
+                }
+            }
+        }
+
+        return {
+            index: bestIndex,
+            recordedTime: maxRecordedTime / 1000 // Convert to seconds
+        };
+    }
+
+    setupKeyboardListener() {
+        if (this.listenerAdded) return;
+
         const focusElement = document.querySelector('div[data-a-target="player-overlay-click-handler"]');
-        if (focusElement) {
-            console.log('[ITR] Focus element found:', focusElement);
+        if (!focusElement) {
+            console.warn('[ITR] Focus element not found');
+            return;
+        }
 
-            // Make sure the element is focusable
-            focusElement.tabIndex = 0;
+        focusElement.tabIndex = 0;
+        focusElement.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowLeft' && document.activeElement === focusElement) {
+                this.playReplay();
+            }
+        });
 
-            // Add keydown listener to the focusElement to ensure it must be in focus
-            focusElement.addEventListener('keydown', handleKeyDown);
-        initializeReplaySystem.listenerAdded = true;
-        } else {
-            console.log('[ITR] Focus element not found.');
+        this.listenerAdded = true;
+    }
+
+    async playReplay() {
+        if (this.isReplaying) {
+            console.log('[ITR] Replay already in progress');
+            return;
+        }
+
+        const bestRecorder = this.getBestRecorder();
+        const chunk = this.dataChunks[bestRecorder.index];
+
+        if (!chunk) {
+            console.warn('[ITR] No replay data available yet');
+            return;
+        }
+
+        console.log(`[ITR] Playing replay from recorder ${bestRecorder.index} with ${bestRecorder.recordedTime.toFixed(1)}s recorded`);
+
+        this.isReplaying = true;
+        const replayUI = new ReplayUI(this.cleanup.bind(this));
+        await replayUI.show([chunk]);
+    }
+
+    cleanup() {
+        this.isReplaying = false;
+    }
+}
+
+class ReplayUI {
+    constructor(onCleanup) {
+        this.onCleanup = onCleanup;
+        this.elements = {};
+    }
+
+    async show(chunks) {
+        const blob = new Blob(chunks, { type: chunks[0].type });
+        const url = URL.createObjectURL(blob);
+        
+        this.createElements();
+        this.setupEventListeners(url);
+        document.body.appendChild(this.elements.wrapper);
+        
+        const originalVideo = document.querySelector('video');
+        if (originalVideo) {
+            this.previousVolume = originalVideo.volume;
+            originalVideo.volume = CONFIG.volumeReduction;
         }
     }
-}
 
-function handleKeyDown(event) {
-    console.log('[ITR] Key pressed:', event.key);
+    createElements() {
+        // Create wrapper
+        this.elements.wrapper = document.createElement('div');
+        Object.assign(this.elements.wrapper.style, {
+            position: 'fixed',
+            bottom: '10px',
+            right: '10px',
+            width: CONFIG.defaultWrapperWidth,
+            height: 'auto',
+            resize: 'both',
+            overflow: 'auto',
+            zIndex: '1000',
+            backgroundColor: 'black'
+        });
 
-    // Check if the specific element is in focus
-    const focusElement = document.querySelector('div[data-a-target="player-overlay-click-handler"]');
-    if (document.activeElement !== focusElement) {
-        console.log('[ITR] Specified element is not in focus.');
-        return;
+        // Create video element
+        this.elements.video = document.createElement('video');
+        Object.assign(this.elements.video, {
+            controls: true,
+            autoplay: true,
+            style: 'width: 100%; height: auto;'
+        });
+
+        // Create close button
+        this.elements.closeButton = document.createElement('div');
+        Object.assign(this.elements.closeButton.style, {
+            position: 'absolute',
+            top: '5px',
+            right: '10px',
+            fontSize: '24px',
+            color: 'white',
+            cursor: 'pointer',
+            zIndex: '1001'
+        });
+        this.elements.closeButton.innerHTML = '&times;';
+
+        this.elements.wrapper.appendChild(this.elements.video);
+        this.elements.wrapper.appendChild(this.elements.closeButton);
     }
 
-    if (event.key === 'ArrowLeft') {
-        console.log('[ITR] Left arrow key detected. Initiating replay...');
-        playReplay();
-    }
-}
+    setupEventListeners(url) {
+        const cleanup = () => this.cleanup(url);
 
-function playReplay() {
-    // Copy the current buffer into a new playback buffer
-    const playbackBuffer = videoBuffer.slice(); // Create a shallow copy
-    if (playbackBuffer.length === 0) {
-        console.log('[ITR] Playback buffer is empty. Cannot play replay.');
-        return;
-    }
+        this.elements.closeButton.addEventListener('click', cleanup);
+        this.elements.video.addEventListener('ended', cleanup);
+        this.elements.video.addEventListener('error', (e) => {
+            console.error('[ITR] Replay video error:', e);
+            alert('Replay failed due to encoding issues.');
+            cleanup();
+        });
 
-    if (document.getElementById('replayWrapper')) {
-        console.log('[ITR] Replay is already playing.');
-        return;
-    }
+        const escapeHandler = (e) => {
+            if (e.key === 'Escape') {
+                cleanup();
+                document.removeEventListener('keydown', escapeHandler);
+            }
+        };
+        document.addEventListener('keydown', escapeHandler);
 
-    console.log('[ITR] Creating replay video...');
-    let blob;
-    try {
-        const chunks = playbackBuffer.map(chunk => chunk.data);
-        blob = new Blob(chunks, { type: 'video/webm' });
-    } catch (e) {
-        console.error('[ITR] Error creating Blob:', e);
-        return;
+        this.elements.video.src = url;
     }
 
-    let url;
-    try {
-        url = URL.createObjectURL(blob);
-    } catch (e) {
-        console.error('[ITR] Error creating object URL:', e);
-        return;
-    }
-
-    // Before starting replay, lower the original video's volume if the setting is enabled
-    const originalVideo = document.querySelector('video');
-    let previousVolume;
-    if (lowerOriginalVolume && originalVideo) {
-        previousVolume = originalVideo.volume;
-        originalVideo.volume = 0.05;
-    }
-
-    // Create a new video element for the replay
-    const replayVideo = document.createElement('video');
-    replayVideo.id = 'replayVideo';
-    replayVideo.controls = true;
-    replayVideo.autoplay = true;
-    replayVideo.src = url;
-    replayVideo.style.width = '100%'; // Adjusted to fit the wrapper
-    replayVideo.style.height = 'auto';
-
-    // Create a wrapper div to make the replay video resizable
-    const wrapperDiv = document.createElement('div');
-    wrapperDiv.id = 'replayWrapper';
-    wrapperDiv.style.position = 'fixed';
-    wrapperDiv.style.bottom = '10px';
-    wrapperDiv.style.right = '10px';
-    wrapperDiv.style.width = '600px';
-    wrapperDiv.style.height = 'auto';
-    wrapperDiv.style.resize = 'both';
-    wrapperDiv.style.overflow = 'auto';
-    wrapperDiv.style.zIndex = '1000';
-    wrapperDiv.style.backgroundColor = 'black'; // Optional styling
-
-    // Add a closing cross (X) in the top right corner
-    const closeButton = document.createElement('div');
-    closeButton.innerHTML = '&times;';
-    closeButton.style.position = 'absolute';
-    closeButton.style.top = '5px';
-    closeButton.style.right = '10px';
-    closeButton.style.fontSize = '24px';
-    closeButton.style.color = 'white';
-    closeButton.style.cursor = 'pointer';
-    closeButton.style.zIndex = '1001';
-    wrapperDiv.appendChild(closeButton);
-
-    // Function to close the replay and clean up
-    function closeReplay() {
-        console.log('[ITR] Closing replay.');
-        document.body.removeChild(wrapperDiv);
+    cleanup(url) {
+        document.body.removeChild(this.elements.wrapper);
         URL.revokeObjectURL(url);
-        // Restore the original video's volume when the replay ends
-        if (lowerOriginalVolume && originalVideo) {
-            originalVideo.volume = previousVolume;
+
+        const originalVideo = document.querySelector('video');
+        if (originalVideo && this.previousVolume !== undefined) {
+            originalVideo.volume = this.previousVolume;
         }
-        // Remove the keydown event listener
-        document.removeEventListener('keydown', onDocumentKeyDown);
+
+        this.onCleanup();
     }
-
-    // Add event listener to close button
-    closeButton.addEventListener('click', closeReplay);
-
-    // Event handler for keydown event to close on Escape key
-    function onDocumentKeyDown(e) {
-        if (e.key === 'Escape') {
-            closeReplay();
-        }
-    }
-
-    // Add keydown event listener to document
-    document.addEventListener('keydown', onDocumentKeyDown);
-
-    wrapperDiv.appendChild(replayVideo);
-    document.body.appendChild(wrapperDiv);
-
-    console.log('[ITR] Replay video added to the DOM.');
-
-    // Clean up after the replay finishes
-    replayVideo.onended = () => {
-        console.log('[ITR] Replay ended. Cleaning up...');
-        closeReplay();
-    };
-
-    replayVideo.onerror = (e) => {
-        console.error('[ITR] Replay video error:', e);
-        alert('Replay failed due to encoding issues.');
-        closeReplay();
-    };
 }
 
-// Wait for the video element and the focus element to be ready
+// Modified initialization
 const observer = new MutationObserver((mutations, obs) => {
+    if (systemInitialized) {
+        return;
+    }
+
     const videoElement = document.querySelector('video');
     const focusElement = document.querySelector('div[data-a-target="player-overlay-click-handler"]');
+    
     if (videoElement && focusElement) {
-        console.log('[ITR] Video and focus elements found. Initializing replay system.');
-        initializeReplaySystem();
-        obs.disconnect();
+        console.log('[ITR] Found required elements, starting initialization...');
+        systemInitialized = true; // Set flag before initialization starts
+        
+        // Wait for video to be in a good state
+        const checkAndInitialize = async () => {
+            if (videoElement.readyState >= 3) { // HAVE_FUTURE_DATA
+                console.log('[ITR] Video is ready, initializing replay system...');
+                const replaySystem = new ReplaySystem();
+                const success = await replaySystem.initialize();
+                if (success) {
+                    console.log('[ITR] Replay system initialized successfully');
+                    obs.disconnect();
+                    videoElement.removeEventListener('canplay', checkAndInitialize);
+                } else {
+                    console.error('[ITR] Failed to initialize replay system');
+                    systemInitialized = false;
+                }
+            }
+        };
+
+        videoElement.addEventListener('canplay', checkAndInitialize);
+        // Also try immediately in case video is already ready
+        checkAndInitialize();
     }
 });
 
