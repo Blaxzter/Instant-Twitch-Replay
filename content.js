@@ -12,6 +12,7 @@ const CONFIG = {
 
 // Global flag to ensure only one instance
 let systemInitialized = false;
+let replaySystem = null; // Singleton instance
 
 class ReplaySystem {
     constructor() {
@@ -129,11 +130,12 @@ class ReplaySystem {
         for (let i = 0; i < CONFIG.numberOfRecorders; i++) {
             try {
                 const recorder = new MediaRecorder(mediaStream, options);
+                this.dataChunks[i] = []; // Initialize data chunks array for each recorder
                 
                 recorder.ondataavailable = (event) => {
-                    if (event.data?.size > 0) {
-                        this.dataChunks[i] = event.data;
-                        console.log(`[ITR] Data chunk received for recorder ${i}, size: ${event.data.size} bytes`);
+                    if (event.data && event.data.size > 0) {
+                        this.dataChunks[i].push(event.data);
+                        console.log(`[ITR] Data chunk received for recorder ${i}, total chunks: ${this.dataChunks[i].length}, size: ${event.data.size} bytes`);
                     }
                 };
 
@@ -166,10 +168,12 @@ class ReplaySystem {
         // Start first recorder immediately
         this.startRecorder(0);
 
-        // Start second recorder after offset
-        setTimeout(() => {
-            this.startRecorder(1);
-        }, CONFIG.startOffset * 1000);
+        // Start subsequent recorders after offsets
+        for (let i = 1; i < CONFIG.numberOfRecorders; i++) {
+            setTimeout(() => {
+                this.startRecorder(i);
+            }, CONFIG.startOffset * 1000 * i);
+        }
     }
 
     startRecorder(index) {
@@ -177,7 +181,9 @@ class ReplaySystem {
         
         try {
             if (recorder.state === 'inactive') {
-                recorder.start();
+                this.dataChunks[index] = []; // Reset data chunks for the recorder
+                recorder.start(1000); // Start recording with timeslice of 1 second
+                console.log(`[ITR] Recorder ${index} started with timeslice of 1 second`);
                 
                 // Schedule recorder restart after recording duration
                 setTimeout(() => {
@@ -206,23 +212,19 @@ class ReplaySystem {
     }
 
     getBestRecorder() {
-        const now = Date.now();
         let bestIndex = 0;
-        let maxRecordedTime = 0;
+        let maxChunks = 0;
 
         for (let i = 0; i < this.recorders.length; i++) {
-            if (this.recordingStartTimes[i] && this.dataChunks[i]) {
-                const recordedTime = now - this.recordingStartTimes[i];
-                if (recordedTime > maxRecordedTime) {
-                    maxRecordedTime = recordedTime;
+            if (this.dataChunks[i] && this.dataChunks[i].length > maxChunks) {
+                maxChunks = this.dataChunks[i].length;
                     bestIndex = i;
-                }
             }
         }
 
         return {
             index: bestIndex,
-            recordedTime: maxRecordedTime / 1000 // Convert to seconds
+            recordedTime: maxChunks // Each chunk represents 1 second
         };
     }
 
@@ -252,18 +254,18 @@ class ReplaySystem {
         }
 
         const bestRecorder = this.getBestRecorder();
-        const chunk = this.dataChunks[bestRecorder.index];
+        const chunks = this.dataChunks[bestRecorder.index];
 
-        if (!chunk) {
+        if (!chunks || chunks.length === 0) {
             console.warn('[ITR] No replay data available yet');
             return;
         }
 
-        console.log(`[ITR] Playing replay from recorder ${bestRecorder.index} with ${bestRecorder.recordedTime.toFixed(1)}s recorded`);
+        console.log(`[ITR] Playing replay from recorder ${bestRecorder.index} with ${bestRecorder.recordedTime}s recorded`);
 
         this.isReplaying = true;
         const replayUI = new ReplayUI(this.cleanup.bind(this));
-        await replayUI.show([chunk]);
+        await replayUI.show(chunks);
     }
 
     cleanup() {
@@ -378,21 +380,26 @@ const observer = new MutationObserver((mutations, obs) => {
     
     if (videoElement && focusElement) {
         console.log('[ITR] Found required elements, starting initialization...');
-        systemInitialized = true; // Set flag before initialization starts
         
         // Wait for video to be in a good state
         const checkAndInitialize = async () => {
+            if (systemInitialized) {
+                return;
+            }
             if (videoElement.readyState >= 3) { // HAVE_FUTURE_DATA
                 console.log('[ITR] Video is ready, initializing replay system...');
-                const replaySystem = new ReplaySystem();
+                
+                if (!replaySystem) {
+                    replaySystem = new ReplaySystem();
+                }
                 const success = await replaySystem.initialize();
                 if (success) {
                     console.log('[ITR] Replay system initialized successfully');
                     obs.disconnect();
                     videoElement.removeEventListener('canplay', checkAndInitialize);
+                    systemInitialized = true; // Set flag after successful initialization
                 } else {
                     console.error('[ITR] Failed to initialize replay system');
-                    systemInitialized = false;
                 }
             }
         };
