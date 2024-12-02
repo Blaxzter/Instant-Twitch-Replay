@@ -12,6 +12,8 @@ const CONFIG = {
         "video/webm; codecs=vp8",
         "video/webm",
     ],
+    storageKey: "replayUIPositionAndSize", // Key for localStorage
+    useStorage: true, // Save position and size to localStorage
 };
 
 // Global flag to ensure only one instance
@@ -320,6 +322,11 @@ class ReplayUI {
         this.yOffset = 0;
         this.initialWidth = 0;
         this.initialHeight = 0;
+        this.previousVolume = null;
+
+        // Bind methods to ensure proper 'this' context
+        this.drag = this.drag.bind(this);
+        this.dragEnd = this.dragEnd.bind(this);
     }
 
     async show(chunks) {
@@ -328,18 +335,8 @@ class ReplayUI {
 
         this.createElements();
 
-        setTimeout(() => {
-            // Calculate initial position from bottom-right
-            const wrapper = this.elements.wrapper;
-            const rect = wrapper.getBoundingClientRect();
-            const top = window.innerHeight - rect.height - 10; // 10px from bottom
-
-            console.log(rect);
-
-            // Set initial position
-            wrapper.style.top = `${top}px`;
-            wrapper.style.left = `${window.innerWidth - rect.width - 10}px`; // 10px from right
-        }, 10);
+        // Load and apply saved position and size
+        this.loadPositionAndSize();
 
         this.setupEventListeners(url);
         this.setupDragListeners();
@@ -363,6 +360,9 @@ class ReplayUI {
             backgroundColor: "black",
             cursor: "default",
             transform: "translate(0px, 0px)",
+            boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
+            borderRadius: "8px",
+            overflow: "hidden",
         });
 
         // Create drag handle
@@ -480,6 +480,7 @@ class ReplayUI {
 
         const stopResize = () => {
             this.isResizing = false;
+            this.savePositionAndSize();
             if (!this.elements.wrapper.matches(":hover")) {
                 this.elements.resizeHandle.style.opacity = "0";
             }
@@ -566,6 +567,9 @@ class ReplayUI {
 
                 this.elements.wrapper.style.transform = `translate(${this.currentX}px, ${this.currentY}px)`;
             }
+
+
+            this.savePositionAndSize();
         };
 
         const drag = (e) => {
@@ -617,6 +621,54 @@ class ReplayUI {
         document.addEventListener("keydown", escapeHandler);
 
         this.elements.video.src = url;
+
+        
+    }
+
+
+    loadPositionAndSize() {
+        const saved = localStorage.getItem(CONFIG.storageKey);
+        if (saved && CONFIG.useStorage) {
+            try {
+                const { x, y, width } = JSON.parse(saved);
+                this.currentX = x;
+                this.currentY = y;
+                this.xOffset = x;
+                this.yOffset = y;
+                this.elements.wrapper.style.transform = `translate(${x}px, ${y}px)`;
+                this.elements.wrapper.style.width = width;
+            } catch (e) {
+                console.error(
+                    "[ITR] Failed to parse saved position and size:",
+                    e
+                );
+            }
+        } else {
+            // If no saved position, set default position (10px from bottom-right)
+            const wrapper = this.elements.wrapper;
+            const rect = wrapper.getBoundingClientRect();
+            const top = window.innerHeight - rect.height - 10; // 10px from bottom
+            const left = window.innerWidth - parseInt(CONFIG.defaultWrapperWidth) - 10; // 10px from right
+            this.currentX = left;
+            this.currentY = top;
+            this.xOffset = left;
+            this.yOffset = top;
+            this.elements.wrapper.style.transform = `translate(${left}px, ${top}px)`;
+        }
+    }
+
+    savePositionAndSize() {
+        if (!CONFIG.useStorage) return;
+        const transform = this.elements.wrapper.style.transform;
+        let x = this.currentX;
+        let y = this.currentY;
+        // Optionally, parse the transform string if needed
+        // Here, we're using currentX and currentY directly
+
+        const width = this.elements.wrapper.style.width || CONFIG.defaultWrapperWidth;
+        const data = { x, y, width };
+        localStorage.setItem(CONFIG.storageKey, JSON.stringify(data));
+        console.log("[ITR] Saved Replay UI position and size:", data);
     }
 
     cleanup(url) {
