@@ -1,5 +1,5 @@
 // Configuration options
-const CONFIG = {
+let CONFIG = {
     numberOfRecorders: 2,
     recordingDuration: 30, // seconds per recorder
     startOffset: 15, // seconds between recorder starts
@@ -16,6 +16,22 @@ const CONFIG = {
     useStorage: true, // Save position and size to localStorage
     roundedCorners: 4, // px
 };
+
+// Load config from storage when content script initializes
+chrome.storage.sync.get(["extensionConfig"], function (result) {
+    if (result.extensionConfig) {
+        CONFIG = { ...CONFIG, ...result.extensionConfig };
+    }
+});
+
+// Listen for configuration updates
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === "CONFIG_UPDATE") {
+        CONFIG = { ...CONFIG, ...message.config };
+        // Add any necessary logic to apply the new configuration
+        // For example, updating UI elements or reinitializing components
+    }
+});
 
 // Global flag to ensure only one instance
 let systemInitialized = false;
@@ -324,10 +340,6 @@ class ReplayUI {
         this.initialWidth = 0;
         this.initialHeight = 0;
         this.previousVolume = null;
-
-        // Bind methods to ensure proper 'this' context
-        this.drag = this.drag.bind(this);
-        this.dragEnd = this.dragEnd.bind(this);
     }
 
     async show(chunks) {
@@ -569,7 +581,6 @@ class ReplayUI {
                 this.elements.wrapper.style.transform = `translate(${this.currentX}px, ${this.currentY}px)`;
             }
 
-
             this.savePositionAndSize();
         };
 
@@ -622,10 +633,7 @@ class ReplayUI {
         document.addEventListener("keydown", escapeHandler);
 
         this.elements.video.src = url;
-
-        
     }
-
 
     loadPositionAndSize() {
         const saved = localStorage.getItem(CONFIG.storageKey);
@@ -646,15 +654,20 @@ class ReplayUI {
             }
         } else {
             // If no saved position, set default position (10px from bottom-right)
-            const wrapper = this.elements.wrapper;
-            const rect = wrapper.getBoundingClientRect();
-            const top = window.innerHeight - rect.height - 10; // 10px from bottom
-            const left = window.innerWidth - parseInt(CONFIG.defaultWrapperWidth) - 10; // 10px from right
-            this.currentX = left;
-            this.currentY = top;
-            this.xOffset = left;
-            this.yOffset = top;
-            this.elements.wrapper.style.transform = `translate(${left}px, ${top}px)`;
+            setTimeout(() => {
+                const wrapper = this.elements.wrapper;
+                const rect = wrapper.getBoundingClientRect();
+                const top = window.innerHeight - rect.height - 10; // 10px from bottom
+                const left =
+                    window.innerWidth -
+                    parseInt(CONFIG.defaultWrapperWidth) -
+                    10; // 10px from right
+                this.currentX = left;
+                this.currentY = top;
+                this.xOffset = left;
+                this.yOffset = top;
+                this.elements.wrapper.style.transform = `translate(${left}px, ${top}px)`;
+            }, 50);
         }
     }
 
@@ -666,7 +679,8 @@ class ReplayUI {
         // Optionally, parse the transform string if needed
         // Here, we're using currentX and currentY directly
 
-        const width = this.elements.wrapper.style.width || CONFIG.defaultWrapperWidth;
+        const width =
+            this.elements.wrapper.style.width || CONFIG.defaultWrapperWidth;
         const data = { x, y, width };
         localStorage.setItem(CONFIG.storageKey, JSON.stringify(data));
         console.log("[ITR] Saved Replay UI position and size:", data);
@@ -731,7 +745,7 @@ const observer = new MutationObserver((mutations, obs) => {
                     );
                     systemInitialized = true; // Set flag after successful initialization
                 } else {
-                    console.error("[ITR] Failed to initialize replay system");
+                    console.warn("[ITR] Failed to initialize replay system");
                 }
             }
         };

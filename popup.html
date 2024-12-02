@@ -1,0 +1,69 @@
+<!-- popup.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            width: 400px;
+            padding: 15px;
+            font-family: Arial, sans-serif;
+        }
+        .config-item {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .save-button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .save-button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div id="config-form">
+        <div class="config-item">
+            <label for="numberOfRecorders">Number of Recorders:</label>
+            <input type="number" id="numberOfRecorders" min="1" max="10">
+        </div>
+        <div class="config-item">
+            <label for="recordingDuration">Recording Duration (seconds):</label>
+            <input type="number" id="recordingDuration" min="1">
+        </div>
+        <div class="config-item">
+            <label for="defaultWrapperWidth">Wrapper Width:</label>
+            <input type="text" id="defaultWrapperWidth">
+        </div>
+        <div class="config-item">
+            <label for="volumeReduction">Volume Reduction:</label>
+            <input type="number" id="volumeReduction" min="0" max="1" step="0.01">
+        </div>
+        <div class="config-item">
+            <label for="roundedCorners">Rounded Corners (px):</label>
+            <input type="number" id="roundedCorners" min="0">
+        </div>
+        <div class="config-item">
+            <label for="useStorage">Use Storage:</label>
+            <input type="checkbox" id="useStorage">
+        </div>
+        <button class="save-button" id="saveConfig">Save Configuration</button>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>
