@@ -14,6 +14,7 @@ const CONFIG = {
     ],
     storageKey: "replayUIPositionAndSize", // Key for localStorage
     useStorage: true, // Save position and size to localStorage
+    roundedCorners: 4, // px
 };
 
 // Global flag to ensure only one instance
@@ -361,7 +362,7 @@ class ReplayUI {
             cursor: "default",
             transform: "translate(0px, 0px)",
             boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
-            borderRadius: "8px",
+            borderRadius: `${CONFIG.roundedCorners}px`,
             overflow: "hidden",
         });
 
