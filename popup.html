@@ -1,69 +1,235 @@
 <!-- popup.html -->
 <!DOCTYPE html>
 <html>
-<head>
-    <style>
-        body {
-            width: 400px;
-            padding: 15px;
-            font-family: Arial, sans-serif;
-        }
-        .config-item {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        input, select {
-            width: 100%;
-            padding: 5px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        .save-button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            width: 100%;
-        }
-        .save-button:hover {
-            background-color: #45a049;
-        }
-    </style>
-</head>
-<body>
-    <div id="config-form">
-        <div class="config-item">
-            <label for="numberOfRecorders">Number of Recorders:</label>
-            <input type="number" id="numberOfRecorders" min="1" max="10">
+    <head>
+        <style>
+            body {
+                width: 400px;
+                padding: 8px 15px 0px 15px;
+                font-family: Arial, sans-serif;
+            }
+            .config-item {
+                margin-bottom: 10px;
+            }
+            .toggle-label {
+                margin-right: 10px;
+            }
+            .header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .flex-container {
+                display: flex;
+                justify-content: start;
+                align-items: center;
+            }
+            label {
+                display: block;
+                margin-bottom: 5px;
+                font-weight: bold;
+            }
+            input,
+            select {
+                width: 100%;
+                padding: 5px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
+            .save-button {
+                background-color: #4caf50;
+                color: white;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                width: 100px;
+            }
+            .save-button:hover {
+                background-color: #45a049;
+            }
+
+            .textfield-item-list {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+
+            .checkbox-item-list {
+                /* A grid with 2 columns first is align start second is align center */
+                display: grid;
+                grid-template-columns: 1.1fr 1fr;
+                align-items: center;
+            }
+
+            .checkbox-item-list .switch-item {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .checkbox-item {
+                display: flex;
+                align-items: center;
+            }
+
+            .description {
+                padding-top: 4px;
+                padding-left: 4px;
+                font-size: 12px;
+                color: #666;
+            }
+
+            /* Enable Button */
+            .toggleContainer {
+                position: relative;
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                width: fit-content;
+                border: 3px solid #343434;
+                border-radius: 20px;
+                background: #343434;
+                font-size: 12px;
+                font-weight: bold;
+                color: #343434;
+                cursor: pointer;
+            }
+            .toggleContainer::before {
+                content: "";
+                position: absolute;
+                width: 50%;
+                height: 100%;
+                left: 0%;
+                border-radius: 20px;
+                background: white;
+                transition: all 0.3s;
+            }
+            .toggleCheckbox:checked + .toggleContainer::before {
+                left: 50%;
+            }
+            .toggleContainer div {
+                padding: 4px;
+                text-align: center;
+                z-index: 1;
+            }
+            .toggleCheckbox {
+                display: none;
+            }
+            .toggleCheckbox:checked + .toggleContainer div:first-child {
+                color: white;
+                transition: color 0.3s;
+            }
+            .toggleCheckbox:checked + .toggleContainer div:last-child {
+                color: #343434;
+                transition: color 0.3s;
+            }
+            .toggleCheckbox + .toggleContainer div:first-child {
+                color: #343434;
+                transition: color 0.3s;
+            }
+            .toggleCheckbox + .toggleContainer div:last-child {
+                color: white;
+                transition: color 0.3s;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>Instant Twitch Replay</h1>
+            <!-- <button class="save-button" id="saveConfig">
+                Save
+            </button> -->
         </div>
-        <div class="config-item">
-            <label for="recordingDuration">Recording Duration (seconds):</label>
-            <input type="number" id="recordingDuration" min="1">
+        <div id="config-form">
+            <div class="config-item checkbox-item-list">
+                <label for="enableToggle" class="toggle-label"
+                    >Disable the recording</label
+                >
+                <div class="switch-item">
+                    <input type="checkbox" id="enableToggle" class="toggleCheckbox" />
+                    <label for="enableToggle" class="toggleContainer">
+                        <div>Disabled</div>
+                        <div>Enabled</div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="config-item">
+                <label for="numberOfRecorders">Number of Recorders:</label>
+                <input type="number" id="numberOfRecorders" min="1" max="4" />
+                <div class="description">
+                    Number of recorders that will record the stream.
+                    <br />
+                    loss potential: 1: full, 2: half, 3: a third, ... <br />
+                    More reqcorder require more CPU and memory.
+                    <small>Maximum 4 recorders</small>
+                </div>
+            </div>
+            <div class="config-item">
+                <label for="recordingDuration"
+                    >Recording Duration (seconds):</label
+                >
+                <input type="number" id="recordingDuration" min="1" max="60" />
+                <div class="description">
+                    Length of the buffer. <br />
+                    More duration require more memory.
+                    <small>Maximum 60 seconds</small>
+                </div>
+            </div>
+            <div class="config-item textfield-item-list">
+                <div>
+                    <label for="defaultWrapperWidth">Wrapper Width:</label>
+                    <input type="text" id="defaultWrapperWidth" />
+                    <div class="description">Width of the wrapper.</div>
+                </div>
+                <div>
+                    <label for="roundedCorners">Rounded Corners (px):</label>
+                    <input type="number" id="roundedCorners" min="0" />
+                    <div class="description">Radius of the window corners.</div>
+                </div>
+            </div>
+            <div class="config-item">
+                <label for="volumeReduction">Volume Reduction:</label>
+                <input
+                    type="number"
+                    id="volumeReduction"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                />
+                <div class="description">
+                    Volume reduction of the stream during the playback. <br />
+                    0.5 means 50% volume reduction.
+                </div>
+            </div>
+
+            <div class="config-item checkbox-item-list">
+                <label for="useStorage" class="toggle-label"
+                    >Remeber last placed position of replay window</label
+                >
+                <div class="switch-item">
+                    <input type="checkbox" id="useStorage" class="toggleCheckbox" />
+                    <label for="useStorage" class="toggleContainer">
+                        <div>Disabled</div>
+                        <div>Enabled</div>
+                    </label>
+                </div>
+            </div>
+
+
+            <div class="config-item checkbox-item-list">
+                <label for="autoClose" class="toggle-label"
+                    >Automatically close replay window after playback ended.</label
+                >
+                <div class="switch-item">
+                    <input type="checkbox" id="autoClose" class="toggleCheckbox" />
+                    <label for="autoClose" class="toggleContainer">
+                        <div>Disabled</div>
+                        <div>Enabled</div>
+                    </label>
+                </div>
+            </div>
         </div>
-        <div class="config-item">
-            <label for="defaultWrapperWidth">Wrapper Width:</label>
-            <input type="text" id="defaultWrapperWidth">
-        </div>
-        <div class="config-item">
-            <label for="volumeReduction">Volume Reduction:</label>
-            <input type="number" id="volumeReduction" min="0" max="1" step="0.01">
-        </div>
-        <div class="config-item">
-            <label for="roundedCorners">Rounded Corners (px):</label>
-            <input type="number" id="roundedCorners" min="0">
-        </div>
-        <div class="config-item">
-            <label for="useStorage">Use Storage:</label>
-            <input type="checkbox" id="useStorage">
-        </div>
-        <button class="save-button" id="saveConfig">Save Configuration</button>
-    </div>
-    <script src="popup.js"></script>
-</body>
+        <script src="popup.js"></script>
+    </body>
 </html>

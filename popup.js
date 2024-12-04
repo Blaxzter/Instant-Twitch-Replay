@@ -11,10 +11,26 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('volumeReduction').value = config.volumeReduction || 0.05;
         document.getElementById('roundedCorners').value = config.roundedCorners || 4;
         document.getElementById('useStorage').checked = config.useStorage !== false;
+        document.getElementById('enableToggle').checked = config.enableToggle !== false;
+        document.getElementById('autoClose').checked = config.autoClose !== false;
     });
 
+
+    // Debounce function to limit how often we save configuration
+    function debounce(func, wait) {
+        let timeout;
+        return function(...args) {
+            const later = () => {
+                timeout = null;
+                func.apply(this, args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
     // Save configuration
-    document.getElementById('saveConfig').addEventListener('click', function() {
+    function saveConfiguration() {
         const newConfig = {
             numberOfRecorders: parseInt(document.getElementById('numberOfRecorders').value),
             recordingDuration: parseInt(document.getElementById('recordingDuration').value),
@@ -27,7 +43,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 "video/webm; codecs=vp8",
                 "video/webm",
             ],
-            storageKey: "replayUIPositionAndSize"
+            storageKey: "replayUIPositionAndSize",
+            enableToggle: document.getElementById('enableToggle').checked,
+            autoClose: document.getElementById('autoClose').checked
         };
 
         // Save to chrome.storage
@@ -39,15 +57,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 chrome.tabs.sendMessage(tabs[0].id, {
                     type: 'CONFIG_UPDATE',
                     config: newConfig
+                }).catch(error => {
+                    // Ignore the error - we're probably not on a Twitch page
+                    console.log('Not on Twitch - settings saved but not applied to current page');
                 });
             });
 
             // Visual feedback
-            const saveButton = document.getElementById('saveConfig');
-            saveButton.textContent = 'Saved!';
+            const headerTitle = document.querySelector('.header h1');
+            headerTitle.textContent = 'Settings Saved!';
             setTimeout(() => {
-                saveButton.textContent = 'Save Configuration';
+                headerTitle.textContent = 'Instant Twitch Replay';
             }, 1500);
         });
-    });
+    }
+
+    const debouncedSaveConfiguration = debounce(saveConfiguration, 500);
+
+    document.getElementById('config-form').addEventListener('input', debouncedSaveConfiguration);
 });

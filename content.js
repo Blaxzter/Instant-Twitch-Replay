@@ -1,8 +1,8 @@
 // Configuration options
 let CONFIG = {
+    enableToggle: true,
     numberOfRecorders: 2,
     recordingDuration: 30, // seconds per recorder
-    startOffset: 15, // seconds between recorder starts
     initDelay: 2000,
     videoBitrate: 2500000,
     defaultWrapperWidth: "600px",
@@ -14,12 +14,17 @@ let CONFIG = {
     ],
     storageKey: "replayUIPositionAndSize", // Key for localStorage
     useStorage: true, // Save position and size to localStorage
+    autoClose: true, // Close replay UI on video end
     roundedCorners: 4, // px
 };
 
 // Load config from storage when content script initializes
 chrome.storage.sync.get(["extensionConfig"], function (result) {
     if (result.extensionConfig) {
+        console.log(
+            "[ITR] Loaded configuration from storage:",
+            result.extensionConfig
+        );
         CONFIG = { ...CONFIG, ...result.extensionConfig };
     }
 });
@@ -33,9 +38,104 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 });
 
-// Global flag to ensure only one instance
-let systemInitialized = false;
-let replaySystem = null; // Singleton instance
+function injectStyles() {
+    if (document.getElementById("itr-styles")) {
+        // Styles already injected
+        return;
+    }
+
+    const style = document.createElement("style");
+    style.id = "itr-styles";
+    style.innerHTML = `
+        @keyframes flash {
+            0% { opacity: 1; }
+            50% { opacity: 0.9; }
+            100% { opacity: 1; }
+        }
+
+        #itr-status {
+            display: flex;
+            align-items: center;
+            position: absolute;
+            top: 10px; /* Adjust as needed */
+            left: 10px; /* Adjust as needed */
+            z-index: 1000; /* Ensure it's on top */
+            background-color: rgba(0, 0, 0, 0.5); /* Optional: Background for better visibility */
+            padding: 5px 10px;
+            border-radius: 5px;
+            color: white;
+            font-size: 12px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+        }
+
+        #itr-red-dot {
+            width: 10px;
+            height: 10px;
+            background-color: red;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: flash 1s infinite;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+function createStatusIndicator() {
+    const statusContainer = document.createElement("div");
+    statusContainer.id = "itr-status"; // Assign an ID for easy reference and removal
+
+    const redDot = document.createElement("div");
+    redDot.id = "itr-red-dot"; // Assign an ID for styling and cleanup
+
+    const statusText = document.createElement("span");
+    statusText.id = "itr-status-text";
+    statusText.textContent = "Twitch Instant Recorder Running";
+
+    statusContainer.appendChild(redDot);
+    statusContainer.appendChild(statusText);
+
+    return statusContainer;
+}
+
+function addStatusIndicator() {
+    const clickHandler = document.querySelector(
+        'div[data-a-target="player-overlay-click-handler"]'
+    );
+
+    if (!clickHandler) {
+        console.warn(
+            "[ITR] .click-handler element not found. Cannot add status indicator."
+        );
+        return;
+    }
+
+    // Inject necessary styles
+    injectStyles();
+
+    // Remove existing status indicator if present
+    const existingStatus = document.getElementById("itr-status");
+    if (existingStatus) {
+        existingStatus.remove();
+    }
+
+    // Create and append the new status indicator
+    const statusIndicator = createStatusIndicator();
+    clickHandler.style.position = "relative"; // Ensure the parent is positioned
+    clickHandler.appendChild(statusIndicator);
+
+    console.log("[ITR] Status indicator added to .click-handler element.");
+}
+
+
+function removeStatusIndicator() {
+    const statusIndicator = document.getElementById("itr-status");
+    if (statusIndicator) {
+        statusIndicator.remove();
+        console.log("[ITR] Status indicator removed.");
+    }
+}
+
 
 class ReplaySystem {
     constructor() {
@@ -45,6 +145,7 @@ class ReplaySystem {
         this.listenerAdded = false;
         this.isReplaying = false;
         this.initializationInProgress = false;
+        this.timeouts = [];
     }
 
     async initialize() {
@@ -168,7 +269,7 @@ class ReplaySystem {
 
                 recorder.ondataavailable = (event) => {
                     if (event.data && event.data.size > 0) {
-                        this.dataChunks[i].push(event.data);
+                        this.dataChunks[i]?.push(event.data);
                         console.log(
                             `[ITR] Data chunk received for recorder ${i}, total chunks: ${this.dataChunks[i].length}, size: ${event.data.size} bytes`
                         );
@@ -213,9 +314,11 @@ class ReplaySystem {
 
         // Start subsequent recorders after offsets
         for (let i = 1; i < CONFIG.numberOfRecorders; i++) {
-            setTimeout(() => {
-                this.startRecorder(i);
-            }, CONFIG.startOffset * 1000 * i);
+            this.timeouts.push(
+                setTimeout(() => {
+                    this.startRecorder(i);
+                }, (CONFIG.recordingDuration / CONFIG.numberOfRecorders) * 1000 * i)
+            );
         }
     }
 
@@ -231,9 +334,11 @@ class ReplaySystem {
                 );
 
                 // Schedule recorder restart after recording duration
-                setTimeout(() => {
-                    this.restartRecorder(index);
-                }, CONFIG.recordingDuration * 1000);
+                this.timeouts.push(
+                    setTimeout(() => {
+                        this.restartRecorder(index);
+                    }, CONFIG.recordingDuration * 1000)
+                );
             }
         } catch (error) {
             console.error(`[ITR] Error starting recorder ${index}:`, error);
@@ -280,7 +385,7 @@ class ReplaySystem {
             'div[data-a-target="player-overlay-click-handler"]'
         );
         if (!focusElement) {
-            console.warn("[ITR] Focus element not found");
+            console.info("[ITR] Focus element not found");
             return;
         }
 
@@ -322,6 +427,28 @@ class ReplaySystem {
 
     cleanup() {
         this.isReplaying = false;
+    }
+
+    destroy() {
+        console.log("[ITR] Destroying replay system");
+        for (const recorder of this.recorders) {
+            if (recorder.state !== "inactive") {
+                recorder.stop();
+            }
+        }
+        // Clear any pending timeouts
+        for (const timeout of this.timeouts) {
+            clearTimeout(timeout);
+        }
+
+        this.recorders = [];
+        this.dataChunks = [];
+        this.recordingStartTimes = [];
+        this.listenerAdded = false;
+        this.isReplaying = false;
+        this.initializationInProgress = false;
+
+        removeStatusIndicator();
     }
 }
 
@@ -617,7 +744,11 @@ class ReplayUI {
         const cleanup = () => this.cleanup(url);
 
         this.elements.closeButton.addEventListener("click", cleanup);
-        // this.elements.video.addEventListener('ended', cleanup);
+        this.elements.video.addEventListener('ended', () => {
+            if (CONFIG.autoClose) {
+                cleanup();
+            }
+        });
         this.elements.video.addEventListener("error", (e) => {
             console.error("[ITR] Replay video error:", e);
             alert("Replay failed due to encoding issues.");
@@ -705,57 +836,123 @@ class ReplayUI {
     }
 }
 
-// Modified initialization
-const observer = new MutationObserver((mutations, obs) => {
+let currentStreamerName = null;
+let systemInitialized = false;
+let replaySystem = null;
+
+// Observe the document for a changed tw-title element
+const videoObserver = new MutationObserver(async () => {
+    const newTitle = document.querySelector("h1.tw-title").textContent;
+    if (newTitle && currentStreamerName && newTitle !== currentStreamerName) {
+        console.log(
+            "[ITR] Streamer name changed to:",
+            newTitle,
+            "from previous:",
+            currentStreamerName
+        );
+
+        // destroy existing replay system
+        if (replaySystem) {
+            await replaySystem.destroy();
+            replaySystem = null;
+            systemInitialized = false;
+        }
+
+        currentStreamerName = newTitle;
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+        });
+        videoObserver.disconnect();
+    }
+});
+
+// Debounce utility function
+function debounce(func, wait) {
+    let timeout;
+    return function (...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func.apply(this, args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Function to initialize or refresh your extension's logic
+async function checkAndInitialize(videoElement, obs) {
+    if (!CONFIG.enableToggle) {
+        console.log("[ITR] Instant Replay is disabled in the configuration.");
+        return;
+    }
     if (systemInitialized) {
         return;
     }
 
+    console.log("[ITR] Found required elements, preparing to initialize...");
+
+    if (videoElement.readyState >= 3) {
+        // HAVE_FUTURE_DATA
+        console.log("[ITR] Video is ready, initializing replay system...");
+
+        if (!replaySystem) {
+            replaySystem = new ReplaySystem();
+        }
+        const success = await replaySystem.initialize();
+        if (success) {
+            console.log("[ITR] Replay system initialized successfully");
+
+            addStatusIndicator();
+            currentStreamerName =
+                document.querySelector("h1.tw-title").textContent;
+
+            obs.disconnect();
+            videoElement.removeEventListener(
+                "canplay",
+                debouncedCheckAndInitialize
+            );
+            systemInitialized = true; // Set flag after successful initialization
+
+            videoObserver.observe(document.body, {
+                childList: true,
+                subtree: true,
+            });
+        } else {
+            console.info("[ITR] Failed to initialize replay system");
+        }
+    }
+}
+
+const debouncedCheckAndInitialize = debounce(checkAndInitialize, 300); // 300ms debounce delay
+
+// Function to handle initialization
+function handleInitialization(obs) {
     const videoElement = document.querySelector("video");
     const focusElement = document.querySelector(
         'div[data-a-target="player-overlay-click-handler"]'
     );
 
     if (videoElement && focusElement) {
-        console.log(
-            "[ITR] Found required elements, starting initialization..."
+        // Attach debounced event listener
+        videoElement.addEventListener("canplay", () =>
+            debouncedCheckAndInitialize(videoElement, obs)
         );
-
-        // Wait for video to be in a good state
-        const checkAndInitialize = async () => {
-            if (systemInitialized) {
-                return;
-            }
-            if (videoElement.readyState >= 3) {
-                // HAVE_FUTURE_DATA
-                console.log(
-                    "[ITR] Video is ready, initializing replay system..."
-                );
-
-                if (!replaySystem) {
-                    replaySystem = new ReplaySystem();
-                }
-                const success = await replaySystem.initialize();
-                if (success) {
-                    console.log("[ITR] Replay system initialized successfully");
-                    obs.disconnect();
-                    videoElement.removeEventListener(
-                        "canplay",
-                        checkAndInitialize
-                    );
-                    systemInitialized = true; // Set flag after successful initialization
-                } else {
-                    console.warn("[ITR] Failed to initialize replay system");
-                }
-            }
-        };
-
-        videoElement.addEventListener("canplay", checkAndInitialize);
         // Also try immediately in case video is already ready
-        checkAndInitialize();
+        debouncedCheckAndInitialize(videoElement, obs);
     }
+}
+
+// Setup MutationObserver
+const observer = new MutationObserver((mutations, obs) => {
+    if (systemInitialized) {
+        return;
+    }
+
+    handleInitialization(obs);
 });
 
+// Start observing the document body for changes
 observer.observe(document.body, {
     childList: true,
     subtree: true,
