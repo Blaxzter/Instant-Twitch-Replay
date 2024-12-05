@@ -49,7 +49,7 @@ function injectStyles() {
     style.innerHTML = `
         @keyframes flash {
             0% { opacity: 1; }
-            50% { opacity: 0.9; }
+            50% { opacity: 0.2; }
             100% { opacity: 1; }
         }
 
@@ -99,11 +99,11 @@ function createStatusIndicator() {
 }
 
 function addStatusIndicator() {
-    const clickHandler = document.querySelector(
-        'div[data-a-target="player-overlay-click-handler"]'
+    const topBar = document.querySelector(
+        'div.top-bar'
     );
 
-    if (!clickHandler) {
+    if (!topBar) {
         console.warn(
             "[ITR] .click-handler element not found. Cannot add status indicator."
         );
@@ -121,8 +121,8 @@ function addStatusIndicator() {
 
     // Create and append the new status indicator
     const statusIndicator = createStatusIndicator();
-    clickHandler.style.position = "relative"; // Ensure the parent is positioned
-    clickHandler.appendChild(statusIndicator);
+    topBar.style.position = "relative"; // Ensure the parent is positioned
+    topBar.appendChild(statusIndicator);
 
     console.log("[ITR] Status indicator added to .click-handler element.");
 }
@@ -135,6 +135,24 @@ function removeStatusIndicator() {
         console.log("[ITR] Status indicator removed.");
     }
 }
+
+function calculateMediaDuration(media){
+    return new Promise( (resolve,reject)=>{
+      media.onloadedmetadata = function(){
+        // set the mediaElement.currentTime  to a high value beyond its real duration
+        media.currentTime = Number.MAX_SAFE_INTEGER;
+        // listen to time position change
+        media.ontimeupdate = function(){
+          media.ontimeupdate = function(){};
+          // setting player currentTime back to 0 can be buggy too, set it first to .1 sec
+          media.currentTime = 0.1;
+          media.currentTime = 0;
+          // media.duration should now have its correct value, return it...
+          resolve(media.duration);
+        }
+      }
+    });
+  }
 
 
 class ReplaySystem {
@@ -474,6 +492,13 @@ class ReplayUI {
         const url = URL.createObjectURL(blob);
 
         this.createElements();
+        // fix for the duration of the video
+        const video = this.elements.video;
+        calculateMediaDuration(video).then((duration) => {
+            console.log("[ITR] Video duration:", duration);
+        }).catch((error) => {
+            console.error("[ITR] Error calculating video duration:", error);
+        });
 
         // Load and apply saved position and size
         this.loadPositionAndSize();
