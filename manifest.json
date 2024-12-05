@@ -3,7 +3,7 @@
     "name": "Instant Twitch Replay",
     "version": "1.0",
     "description": "Records last x seconds of Twitch streams for instant replay",
-    "permissions": ["storage", "activeTab"],
+    "permissions": ["storage"],
     "host_permissions": ["https://www.twitch.tv/*"],
     "content_scripts": [
         {
@@ -11,8 +11,11 @@
             "js": ["content.js"]
         }
     ],
-    "background": {
-        "service_worker": "background.js"
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "instant-twitch-replay@firefox-extension.com",
+            "strict_min_version": "109.0"
+        }
     },
     "icons": {
         "16": "icons/icon16.png",
@@ -21,7 +24,7 @@
         "128": "icons/icon128.png"
     },
     "action": {
-      "default_popup": "popup.html",
+        "default_popup": "popup.html",
         "default_icon": {
             "16": "icons/icon16.png",
             "32": "icons/icon32.png",

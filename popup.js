@@ -1,7 +1,8 @@
-// popup.js
+const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
+
 document.addEventListener('DOMContentLoaded', function() {
     // Load current configuration
-    chrome.storage.sync.get(['extensionConfig'], function(result) {
+    browserAPI.storage.sync.get(['extensionConfig'], function(result) {
         const config = result.extensionConfig || {};
         
         // Populate form with current values
@@ -49,12 +50,12 @@ document.addEventListener('DOMContentLoaded', function() {
         };
 
         // Save to chrome.storage
-        chrome.storage.sync.set({
+        browserAPI.storage.sync.set({
             extensionConfig: newConfig
         }, function() {
             // Notify content script of config update
-            chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-                chrome.tabs.sendMessage(tabs[0].id, {
+            browserAPI.tabs.query({active: true, currentWindow: true}, function(tabs) {
+                browserAPI.tabs.sendMessage(tabs[0].id, {
                     type: 'CONFIG_UPDATE',
                     config: newConfig
                 }).catch(error => {

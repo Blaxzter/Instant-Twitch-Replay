@@ -1,3 +1,6 @@
+// Add this at the top of the file
+const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
+
 // Configuration options
 let CONFIG = {
     enableToggle: true,
@@ -19,7 +22,7 @@ let CONFIG = {
 };
 
 // Load config from storage when content script initializes
-chrome.storage.sync.get(["extensionConfig"], function (result) {
+browserAPI.storage.sync.get(["extensionConfig"], function (result) {
     if (result.extensionConfig) {
         console.log(
             "[ITR] Loaded configuration from storage:",
@@ -30,7 +33,7 @@ chrome.storage.sync.get(["extensionConfig"], function (result) {
 });
 
 // Listen for configuration updates
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "CONFIG_UPDATE") {
         CONFIG = { ...CONFIG, ...message.config };
         // Add any necessary logic to apply the new configuration
@@ -227,11 +230,17 @@ class ReplaySystem {
         try {
             let stream = null;
 
-            // Try captureStream first
-            if (videoElement.captureStream) {
+            // Firefox-specific capture method
+            if (typeof browser !== 'undefined') {
+                // Create a new stream with only video track
+                const originalStream = videoElement.mozCaptureStream();
+                const videoTrack = originalStream.getVideoTracks()[0];
+                stream = new MediaStream([videoTrack]);
+                console.log("[ITR] Firefox: Using video-only stream");
+            } 
+            // Chrome/standard capture method
+            else if (videoElement.captureStream) {
                 stream = videoElement.captureStream();
-            } else if (videoElement.mozCaptureStream) {
-                stream = videoElement.mozCaptureStream();
             }
 
             if (!stream) {
@@ -247,10 +256,7 @@ class ReplaySystem {
 
             console.log(
                 "[ITR] Successfully captured video stream with tracks:",
-                stream
-                    .getTracks()
-                    .map((t) => t.kind)
-                    .join(", ")
+                stream.getTracks().map((t) => t.kind).join(", ")
             );
 
             return stream;
@@ -261,17 +267,41 @@ class ReplaySystem {
     }
 
     async getBestRecordingOptions() {
+        // For Firefox, use video-only codecs
+        if (typeof browser !== 'undefined') {
+            const firefoxCodecs = [
+                "video/webm;codecs=vp8",
+                "video/webm;codecs=vp9",
+                "video/webm;codecs=h264"
+            ];
+            
+            for (const mimeType of firefoxCodecs) {
+                if (MediaRecorder.isTypeSupported(mimeType)) {
+                    console.log("[ITR] Using Firefox video-only codec:", mimeType);
+                    return {
+                        mimeType,
+                        videoBitsPerSecond: CONFIG.videoBitrate
+                    };
+                }
+            }
+        }
+
+        // For other browsers or if Firefox codecs fail
         for (const mimeType of CONFIG.codecPreferences) {
             if (MediaRecorder.isTypeSupported(mimeType)) {
                 console.log("[ITR] Using codec:", mimeType);
                 return {
                     mimeType,
-                    videoBitsPerSecond: CONFIG.videoBitrate,
+                    videoBitsPerSecond: CONFIG.videoBitrate
                 };
             }
         }
-        console.error("[ITR] No supported mime types found");
-        return null;
+
+        // Last resort: use default codec
+        console.log("[ITR] Using default codec");
+        return {
+            videoBitsPerSecond: CONFIG.videoBitrate
+        };
     }
 
     async initializeRecorders(mediaStream, options) {
