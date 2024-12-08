@@ -99,9 +99,7 @@ function createStatusIndicator() {
 }
 
 function addStatusIndicator() {
-    const topBar = document.querySelector(
-        'div.top-bar'
-    );
+    const topBar = document.querySelector("div.top-bar");
 
     if (!topBar) {
         console.warn(
@@ -127,7 +125,6 @@ function addStatusIndicator() {
     console.log("[ITR] Status indicator added to .click-handler element.");
 }
 
-
 function removeStatusIndicator() {
     const statusIndicator = document.getElementById("itr-status");
     if (statusIndicator) {
@@ -136,24 +133,49 @@ function removeStatusIndicator() {
     }
 }
 
-function calculateMediaDuration(media){
-    return new Promise( (resolve,reject)=>{
-      media.onloadedmetadata = function(){
-        // set the mediaElement.currentTime  to a high value beyond its real duration
-        media.currentTime = Number.MAX_SAFE_INTEGER;
-        // listen to time position change
-        media.ontimeupdate = function(){
-          media.ontimeupdate = function(){};
-          // setting player currentTime back to 0 can be buggy too, set it first to .1 sec
-          media.currentTime = 0.1;
-          media.currentTime = 0;
-          // media.duration should now have its correct value, return it...
-          resolve(media.duration);
-        }
-      }
+function calculateMediaDuration(media) {
+    return new Promise((resolve, reject) => {
+        media.onloadedmetadata = function () {
+            // set the mediaElement.currentTime  to a high value beyond its real duration
+            media.currentTime = Number.MAX_SAFE_INTEGER;
+            // listen to time position change
+            media.ontimeupdate = function () {
+                media.ontimeupdate = function () {};
+                // setting player currentTime back to 0 can be buggy too, set it first to .1 sec
+                media.currentTime = 0.1;
+                media.currentTime = 0;
+                // media.duration should now have its correct value, return it...
+                resolve(media.duration);
+            };
+        };
     });
-  }
+}
 
+function isAdPlaying() {
+    return !!document.querySelector('span[data-a-target="video-ad-label"]');
+}
+
+async function waitForAdToFinish() {
+    return new Promise((resolve) => {
+        if (!isAdPlaying()) {
+            resolve();
+            return;
+        }
+
+        const observer = new MutationObserver(() => {
+            if (!isAdPlaying()) {
+                observer.disconnect();
+                resolve();
+            }
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+        });
+    });
+}
 
 class ReplaySystem {
     constructor() {
@@ -164,6 +186,7 @@ class ReplaySystem {
         this.isReplaying = false;
         this.initializationInProgress = false;
         this.timeouts = [];
+        this.adCheckInterval = null;
     }
 
     async initialize() {
@@ -180,6 +203,11 @@ class ReplaySystem {
             await new Promise((resolve) =>
                 setTimeout(resolve, CONFIG.initDelay)
             );
+
+            // Check for and wait for any ads to finish
+            console.log("[ITR] Checking for ads before initialization...");
+            await waitForAdToFinish();
+            console.log("[ITR] No ads playing, proceeding with initialization");
 
             const videoElement = document.querySelector("video");
             if (!videoElement) {
@@ -220,6 +248,45 @@ class ReplaySystem {
             return true;
         } finally {
             this.initializationInProgress = false;
+        }
+    }
+
+    setupAdCheckInterval() {
+        // Clear any existing interval
+        if (this.adCheckInterval) {
+            clearInterval(this.adCheckInterval);
+        }
+
+        // Check for ads every second
+        this.adCheckInterval = setInterval(async () => {
+            if (isAdPlaying()) {
+                console.log("[ITR] Ad detected, pausing recorders");
+                this.pauseAllRecorders();
+                
+                // Wait for ad to finish
+                await waitForAdToFinish();
+                
+                console.log("[ITR] Ad finished, resuming recorders");
+                this.resumeAllRecorders();
+            }
+        }, 1000);
+    }
+
+    pauseAllRecorders() {
+        for (let i = 0; i < this.recorders.length; i++) {
+            const recorder = this.recorders[i];
+            if (recorder.state === "recording") {
+                recorder.pause();
+            }
+        }
+    }
+
+    resumeAllRecorders() {
+        for (let i = 0; i < this.recorders.length; i++) {
+            const recorder = this.recorders[i];
+            if (recorder.state === "paused") {
+                recorder.resume();
+            }
         }
     }
 
@@ -449,6 +516,12 @@ class ReplaySystem {
 
     destroy() {
         console.log("[ITR] Destroying replay system");
+
+        if (this.adCheckInterval) {
+            clearInterval(this.adCheckInterval);
+            this.adCheckInterval = null;
+        }
+
         for (const recorder of this.recorders) {
             if (recorder.state !== "inactive") {
                 recorder.stop();
@@ -494,11 +567,13 @@ class ReplayUI {
         this.createElements();
         // fix for the duration of the video
         const video = this.elements.video;
-        calculateMediaDuration(video).then((duration) => {
-            console.log("[ITR] Video duration:", duration);
-        }).catch((error) => {
-            console.error("[ITR] Error calculating video duration:", error);
-        });
+        calculateMediaDuration(video)
+            .then((duration) => {
+                console.log("[ITR] Video duration:", duration);
+            })
+            .catch((error) => {
+                console.error("[ITR] Error calculating video duration:", error);
+            });
 
         // Load and apply saved position and size
         this.loadPositionAndSize();
@@ -769,7 +844,7 @@ class ReplayUI {
         const cleanup = () => this.cleanup(url);
 
         this.elements.closeButton.addEventListener("click", cleanup);
-        this.elements.video.addEventListener('ended', () => {
+        this.elements.video.addEventListener("ended", () => {
             if (CONFIG.autoClose) {
                 cleanup();
             }
