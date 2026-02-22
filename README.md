@@ -1,6 +1,7 @@
 # Instant Twitch Replay
 
 A Chrome extension that enables instant replay functionality for Twitch streams. Press the left arrow key while watching a stream to see the last 30 seconds again in a floating window.
+Link to the Chrome Web Store: https://chromewebstore.google.com/detail/instant-twitch-replay/nhgnfjoaphcklboffbgbmnchjggkalin
 
 ## Features
 
