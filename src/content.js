@@ -1,17 +1,13 @@
+import { WebCodecsRingBuffer } from "./ring-buffer.js";
+
 // Configuration options
 let CONFIG = {
     enableToggle: true,
-    numberOfRecorders: 2,
-    recordingDuration: 30, // seconds per recorder
+    recordingDuration: 30, // seconds of ring buffer
     initDelay: 2000,
     videoBitrate: 2500000,
     defaultWrapperWidth: "600px",
     volumeReduction: 0.05,
-    codecPreferences: [
-        "video/webm; codecs=vp9",
-        "video/webm; codecs=vp8",
-        "video/webm",
-    ],
     storageKey: "replayUIPositionAndSize", // Key for localStorage
     useStorage: true, // Save position and size to localStorage
     autoClose: true, // Close replay UI on video end
@@ -138,24 +134,6 @@ function removeStatusIndicator() {
     }
 }
 
-function calculateMediaDuration(media) {
-    return new Promise((resolve, reject) => {
-        media.onloadedmetadata = function () {
-            // set the mediaElement.currentTime  to a high value beyond its real duration
-            media.currentTime = Number.MAX_SAFE_INTEGER;
-            // listen to time position change
-            media.ontimeupdate = function () {
-                media.ontimeupdate = function () {};
-                // setting player currentTime back to 0 can be buggy too, set it first to .1 sec
-                media.currentTime = 0.1;
-                media.currentTime = 0;
-                // media.duration should now have its correct value, return it...
-                resolve(media.duration);
-            };
-        };
-    });
-}
-
 function isAdPlaying() {
     return !!document.querySelector('span[data-a-target="video-ad-label"]');
 }
@@ -184,13 +162,10 @@ async function waitForAdToFinish() {
 
 class ReplaySystem {
     constructor() {
-        this.recorders = [];
-        this.dataChunks = [];
-        this.recordingStartTimes = [];
+        this.ringBuffer = null;
         this.listenerAdded = false;
         this.isReplaying = false;
         this.initializationInProgress = false;
-        this.timeouts = [];
         this.adCheckInterval = null;
     }
 
@@ -220,35 +195,36 @@ class ReplaySystem {
                 return false;
             }
 
-            // Check if video is actually playing
+            // Wait until video has enough data to capture
             if (videoElement.readyState < 3) {
-                // HAVE_FUTURE_DATA
                 console.log(
-                    "[ITR] Video not ready yet, waiting for metadata..."
+                    "[ITR] Video not ready yet, waiting for data..."
                 );
                 await new Promise((resolve) => {
-                    videoElement.addEventListener("loadeddata", resolve, {
-                        once: true,
-                    });
+                    // Check periodically since loadeddata may have already fired
+                    const check = () => {
+                        if (videoElement.readyState >= 3) {
+                            resolve();
+                        } else {
+                            setTimeout(check, 200);
+                        }
+                    };
+                    check();
                 });
             }
 
-            const mediaStream = await this.captureVideoStream(videoElement);
-            if (!mediaStream) {
-                console.warn("[ITR] Failed to capture media stream");
+            this.ringBuffer = new WebCodecsRingBuffer(
+                CONFIG.recordingDuration,
+                CONFIG.videoBitrate
+            );
+
+            const success = await this.ringBuffer.start(videoElement);
+            if (!success) {
+                console.warn("[ITR] Failed to start ring buffer");
                 return false;
             }
 
-            // Verify stream has tracks
-            if (!mediaStream.getTracks().length) {
-                console.warn("[ITR] Media stream has no tracks");
-                return false;
-            }
-
-            const options = await this.getBestRecordingOptions();
-            if (!options) return false;
-
-            await this.initializeRecorders(mediaStream, options);
+            this.setupAdCheckInterval();
             this.setupKeyboardListener();
             return true;
         } finally {
@@ -257,215 +233,21 @@ class ReplaySystem {
     }
 
     setupAdCheckInterval() {
-        // Clear any existing interval
         if (this.adCheckInterval) {
             clearInterval(this.adCheckInterval);
         }
 
-        // Check for ads every second
         this.adCheckInterval = setInterval(async () => {
             if (isAdPlaying()) {
-                console.log("[ITR] Ad detected, pausing recorders");
-                this.pauseAllRecorders();
-                
-                // Wait for ad to finish
+                console.log("[ITR] Ad detected, pausing ring buffer");
+                this.ringBuffer.pause();
+
                 await waitForAdToFinish();
-                
-                console.log("[ITR] Ad finished, resuming recorders");
-                this.resumeAllRecorders();
+
+                console.log("[ITR] Ad finished, resuming ring buffer");
+                this.ringBuffer.resume();
             }
         }, 1000);
-    }
-
-    pauseAllRecorders() {
-        for (let i = 0; i < this.recorders.length; i++) {
-            const recorder = this.recorders[i];
-            if (recorder.state === "recording") {
-                recorder.pause();
-            }
-        }
-    }
-
-    resumeAllRecorders() {
-        for (let i = 0; i < this.recorders.length; i++) {
-            const recorder = this.recorders[i];
-            if (recorder.state === "paused") {
-                recorder.resume();
-            }
-        }
-    }
-
-    async captureVideoStream(videoElement) {
-        try {
-            let stream = null;
-
-            // Try captureStream first
-            if (videoElement.captureStream) {
-                stream = videoElement.captureStream();
-            } else if (videoElement.mozCaptureStream) {
-                stream = videoElement.mozCaptureStream();
-            }
-
-            if (!stream) {
-                console.error("[ITR] Video captureStream() not supported");
-                return null;
-            }
-
-            // Verify stream has tracks
-            if (stream.getTracks().length === 0) {
-                console.error("[ITR] Captured stream has no tracks");
-                return null;
-            }
-
-            console.log(
-                "[ITR] Successfully captured video stream with tracks:",
-                stream
-                    .getTracks()
-                    .map((t) => t.kind)
-                    .join(", ")
-            );
-
-            return stream;
-        } catch (error) {
-            console.error("[ITR] Error capturing stream:", error);
-            return null;
-        }
-    }
-
-    async getBestRecordingOptions() {
-        for (const mimeType of CONFIG.codecPreferences) {
-            if (MediaRecorder.isTypeSupported(mimeType)) {
-                console.log("[ITR] Using codec:", mimeType);
-                return {
-                    mimeType,
-                    videoBitsPerSecond: CONFIG.videoBitrate,
-                };
-            }
-        }
-        console.error("[ITR] No supported mime types found");
-        return null;
-    }
-
-    async initializeRecorders(mediaStream, options) {
-        // Clear any existing recorders
-        this.recorders = [];
-        this.dataChunks = [];
-        this.recordingStartTimes = [];
-
-        for (let i = 0; i < CONFIG.numberOfRecorders; i++) {
-            try {
-                const recorder = new MediaRecorder(mediaStream, options);
-                this.dataChunks[i] = []; // Initialize data chunks array for each recorder
-
-                recorder.ondataavailable = (event) => {
-                    if (event.data && event.data.size > 0) {
-                        this.dataChunks[i]?.push(event.data);
-                        console.log(
-                            `[ITR] Data chunk received for recorder ${i}, total chunks: ${this.dataChunks[i].length}, size: ${event.data.size} bytes`
-                        );
-                    }
-                };
-
-                recorder.onerror = (error) => {
-                    console.error(`[ITR] MediaRecorder ${i} error:`, error);
-                };
-
-                recorder.onstart = () => {
-                    this.recordingStartTimes[i] = Date.now();
-                    console.log(
-                        `[ITR] Recorder ${i} started at ${new Date(
-                            this.recordingStartTimes[i]
-                        ).toISOString()}`
-                    );
-                };
-
-                recorder.onstop = () => {
-                    console.log(`[ITR] Recorder ${i} stopped successfully`);
-                };
-
-                this.recorders.push(recorder);
-            } catch (error) {
-                console.error(
-                    `[ITR] Error creating MediaRecorder ${i}:`,
-                    error
-                );
-                return false;
-            }
-        }
-
-        // Start recorders with offset
-        await this.startStaggeredRecording();
-        return true;
-    }
-
-    async startStaggeredRecording() {
-        // Start first recorder immediately
-        this.startRecorder(0);
-
-        // Start subsequent recorders after offsets
-        for (let i = 1; i < CONFIG.numberOfRecorders; i++) {
-            this.timeouts.push(
-                setTimeout(() => {
-                    this.startRecorder(i);
-                }, (CONFIG.recordingDuration / CONFIG.numberOfRecorders) * 1000 * i)
-            );
-        }
-    }
-
-    startRecorder(index) {
-        const recorder = this.recorders[index];
-
-        try {
-            if (recorder.state === "inactive") {
-                this.dataChunks[index] = []; // Reset data chunks for the recorder
-                recorder.start(1000); // Start recording with timeslice of 1 second
-                console.log(
-                    `[ITR] Recorder ${index} started with timeslice of 1 second`
-                );
-
-                // Schedule recorder restart after recording duration
-                this.timeouts.push(
-                    setTimeout(() => {
-                        this.restartRecorder(index);
-                    }, CONFIG.recordingDuration * 1000)
-                );
-            }
-        } catch (error) {
-            console.error(`[ITR] Error starting recorder ${index}:`, error);
-        }
-    }
-
-    restartRecorder(index) {
-        const recorder = this.recorders[index];
-
-        try {
-            if (recorder.state !== "inactive") {
-                recorder.stop();
-                // Start the recorder again after a small delay
-                setTimeout(() => {
-                    this.startRecorder(index);
-                }, 100);
-            }
-        } catch (error) {
-            console.error(`[ITR] Error restarting recorder ${index}:`, error);
-        }
-    }
-
-    getBestRecorder() {
-        let bestIndex = 0;
-        let maxChunks = 0;
-
-        for (let i = 0; i < this.recorders.length; i++) {
-            if (this.dataChunks[i] && this.dataChunks[i].length > maxChunks) {
-                maxChunks = this.dataChunks[i].length;
-                bestIndex = i;
-            }
-        }
-
-        return {
-            index: bestIndex,
-            recordedTime: maxChunks, // Each chunk represents 1 second
-        };
     }
 
     setupKeyboardListener() {
@@ -498,21 +280,23 @@ class ReplaySystem {
             return;
         }
 
-        const bestRecorder = this.getBestRecorder();
-        const chunks = this.dataChunks[bestRecorder.index];
-
-        if (!chunks || chunks.length === 0) {
+        if (!this.ringBuffer || !this.ringBuffer.hasData()) {
             console.warn("[ITR] No replay data available yet");
             return;
         }
 
-        console.log(
-            `[ITR] Playing replay from recorder ${bestRecorder.index} with ${bestRecorder.recordedTime}s recorded`
-        );
-
+        console.log("[ITR] Muxing replay from ring buffer...");
         this.isReplaying = true;
+
+        const blob = await this.ringBuffer.getReplayBlob();
+        if (!blob) {
+            console.warn("[ITR] Failed to create replay blob");
+            this.isReplaying = false;
+            return;
+        }
+
         const replayUI = new ReplayUI(this.cleanup.bind(this));
-        await replayUI.show(chunks);
+        await replayUI.show(blob);
     }
 
     cleanup() {
@@ -527,19 +311,11 @@ class ReplaySystem {
             this.adCheckInterval = null;
         }
 
-        for (const recorder of this.recorders) {
-            if (recorder.state !== "inactive") {
-                recorder.stop();
-            }
-        }
-        // Clear any pending timeouts
-        for (const timeout of this.timeouts) {
-            clearTimeout(timeout);
+        if (this.ringBuffer) {
+            this.ringBuffer.stop();
+            this.ringBuffer = null;
         }
 
-        this.recorders = [];
-        this.dataChunks = [];
-        this.recordingStartTimes = [];
         this.listenerAdded = false;
         this.isReplaying = false;
         this.initializationInProgress = false;
@@ -565,20 +341,10 @@ class ReplayUI {
         this.previousVolume = null;
     }
 
-    async show(chunks) {
-        const blob = new Blob(chunks, { type: chunks[0].type });
+    async show(blob) {
         const url = URL.createObjectURL(blob);
 
         this.createElements();
-        // fix for the duration of the video
-        const video = this.elements.video;
-        calculateMediaDuration(video)
-            .then((duration) => {
-                console.log("[ITR] Video duration:", duration);
-            })
-            .catch((error) => {
-                console.error("[ITR] Error calculating video duration:", error);
-            });
 
         // Load and apply saved position and size
         this.loadPositionAndSize();

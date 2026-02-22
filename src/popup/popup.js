@@ -5,7 +5,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const config = result.extensionConfig || {};
         
         // Populate form with current values
-        document.getElementById('numberOfRecorders').value = config.numberOfRecorders || 2;
         document.getElementById('recordingDuration').value = config.recordingDuration || 30;
         document.getElementById('defaultWrapperWidth').value = config.defaultWrapperWidth || '600px';
         document.getElementById('volumeReduction').value = config.volumeReduction || 0.05;
@@ -33,17 +32,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Save configuration
     function saveConfiguration() {
         const newConfig = {
-            numberOfRecorders: parseInt(document.getElementById('numberOfRecorders').value),
             recordingDuration: parseInt(document.getElementById('recordingDuration').value),
             defaultWrapperWidth: document.getElementById('defaultWrapperWidth').value,
             volumeReduction: parseFloat(document.getElementById('volumeReduction').value),
             roundedCorners: parseInt(document.getElementById('roundedCorners').value),
             useStorage: document.getElementById('useStorage').checked,
-            codecPreferences: [
-                "video/webm; codecs=vp9",
-                "video/webm; codecs=vp8",
-                "video/webm",
-            ],
             storageKey: "replayUIPositionAndSize",
             enableToggle: document.getElementById('enableToggle').checked,
             autoClose: document.getElementById('autoClose').checked,

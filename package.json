@@ -1,29 +1,31 @@
 {
     "name": "video-replay-extension",
     "version": "1.0.0",
-    "description": "Chrome extension for video replay with FFmpeg processing",
-    "main": "src/index.js",
+    "description": "Chrome extension for instant Twitch stream replay",
+    "author": "Frederic Abraham (mail@fabraham.dev)",
     "scripts": {
-      "build": "webpack --mode production",
-      "dev": "webpack --mode development --watch",
-      "lint": "eslint src/**/*.js"
+        "build": "webpack --mode production",
+        "dev": "webpack --mode development --watch",
+        "lint": "eslint src/**/*.js"
     },
-    "keywords": ["chrome-extension", "video", "ffmpeg"],
-    "author": "Your Name",
+    "keywords": [
+        "chrome-extension",
+        "twitch",
+        "replay"
+    ],
     "license": "MIT",
     "dependencies": {
-      "@ffmpeg/ffmpeg": "^0.10.1",
-      "@ffmpeg/core": "^0.10.0"
+        "mediabunny": "^1.34.4"
     },
     "devDependencies": {
-      "webpack": "^5.75.0",
-      "webpack-cli": "^5.0.1",
-      "babel-loader": "^9.1.2",
-      "@babel/core": "^7.21.0",
-      "@babel/preset-env": "^7.20.2",
-      "copy-webpack-plugin": "^11.0.0",
-      "html-webpack-plugin": "^5.5.0",
-      "eslint": "^8.36.0",
-      "terser-webpack-plugin": "^5.3.7"
+        "@babel/core": "^7.21.0",
+        "@babel/preset-env": "^7.20.2",
+        "babel-loader": "^9.1.2",
+        "copy-webpack-plugin": "^11.0.0",
+        "eslint": "^8.36.0",
+        "html-webpack-plugin": "^5.5.0",
+        "terser-webpack-plugin": "^5.3.7",
+        "webpack": "^5.75.0",
+        "webpack-cli": "^5.0.1"
     }
-  }
+}

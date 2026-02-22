@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:mediabunny.dev)",
+      "Bash(npm install:*)",
+      "Bash(node -e:*)",
+      "Bash(npx webpack:*)"
+    ]
+  }
+}

@@ -3,10 +3,15 @@ const CopyWebpackPlugin = require('copy-webpack-plugin');
 const TerserPlugin = require('terser-webpack-plugin');
 
 module.exports = {
-  entry: './src/index.js',
+  entry: {
+    content: './src/content.js',
+    background: './src/background.js',
+    popup: './src/popup/popup.js',
+  },
   output: {
     path: path.resolve(__dirname, 'dist'),
-    filename: 'bundle.js'
+    filename: '[name].bundle.js',
+    clean: true,
   },
   module: {
     rules: [
@@ -25,19 +30,13 @@ module.exports = {
   plugins: [
     new CopyWebpackPlugin({
       patterns: [
-        { from: 'public/manifest.json', to: 'manifest.json' },
-        { from: 'public/index.html', to: 'index.html' },
-        // Add any other static assets
+        { from: 'manifest.json', to: 'manifest.json' },
+        { from: 'src/popup/popup.html', to: 'popup.html' },
+        { from: 'icons', to: 'icons' },
       ]
     })
   ],
   optimization: {
     minimizer: [new TerserPlugin()],
   },
-  resolve: {
-    fallback: {
-      "crypto": require.resolve("crypto-browserify"),
-      "stream": require.resolve("stream-browserify")
-    }
-  }
 };
