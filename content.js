@@ -16,6 +16,7 @@ let CONFIG = {
     useStorage: true, // Save position and size to localStorage
     autoClose: true, // Close replay UI on video end
     roundedCorners: 4, // px
+    showBadge: true, // Show status indicator badge
 };
 
 // Load config from storage when content script initializes
@@ -33,8 +34,12 @@ chrome.storage.sync.get(["extensionConfig"], function (result) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "CONFIG_UPDATE") {
         CONFIG = { ...CONFIG, ...message.config };
-        // Add any necessary logic to apply the new configuration
-        // For example, updating UI elements or reinitializing components
+        // Apply badge visibility change immediately
+        if (message.config.showBadge === false) {
+            removeStatusIndicator();
+        } else if (message.config.showBadge === true) {
+            addStatusIndicator();
+        }
     }
 });
 
@@ -1003,7 +1008,9 @@ async function checkAndInitialize(videoElement, obs) {
         if (success) {
             console.log("[ITR] Replay system initialized successfully");
 
-            addStatusIndicator();
+            if (CONFIG.showBadge) {
+                addStatusIndicator();
+            }
             currentStreamerName =
                 document.querySelector("h1.tw-title").textContent;
 

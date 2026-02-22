@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('useStorage').checked = config.useStorage !== false;
         document.getElementById('enableToggle').checked = config.enableToggle !== false;
         document.getElementById('autoClose').checked = config.autoClose !== false;
+        document.getElementById('showBadge').checked = config.showBadge !== false;
     });
 
 
@@ -45,7 +46,8 @@ document.addEventListener('DOMContentLoaded', function() {
             ],
             storageKey: "replayUIPositionAndSize",
             enableToggle: document.getElementById('enableToggle').checked,
-            autoClose: document.getElementById('autoClose').checked
+            autoClose: document.getElementById('autoClose').checked,
+            showBadge: document.getElementById('showBadge').checked
         };
 
         // Save to chrome.storage
