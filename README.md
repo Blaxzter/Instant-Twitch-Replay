@@ -5,14 +5,14 @@ Link to the Chrome Web Store: https://chromewebstore.google.com/detail/instant-t
 
 ## Features
 
-- Records the last 30 seconds of any Twitch stream continuously
-- Trigger replay with left arrow key
-- Picture-in-picture style replay window
-- Resizable replay window
-- Automatic volume reduction of main stream during replay
-- Configurable replay volume: a fixed percentage or matching the stream's volume
-- Multiple buffer system for reliable capture
-- Supports various video codecs (VP9, VP8)
+- Continuously buffers the last 30 seconds of any Twitch stream (configurable up to 60)
+- Trigger replay with the left arrow key — no seeking, no reloading
+- Picture-in-picture style replay window you can drag and resize
+- Replays with sound, and ducks the live stream while the replay plays
+- Configurable replay volume: a fixed level or matching the stream's volume
+- Skips ads: the buffer pauses while an ad is playing so replays stay ad-free
+- Remembers the replay window's position and size between replays
+- Settings popup for buffer length, volumes, window size and more
 
 ## Installation
 
@@ -27,13 +27,16 @@ Link to the Chrome Web Store: https://chromewebstore.google.com/detail/instant-t
 2. Wait a few seconds for the extension to initialize
 3. Press the left arrow key while focused on the video player to see the last 30 seconds
 4. Close the replay window with ESC key or the X button
+5. Click the extension icon to change the buffer length, volumes and window behaviour
 
 ## Technical Details
 
-- Uses MediaRecorder API for stream capture
-- Implements a rotating buffer system with multiple recorders
-- Automatic codec selection based on browser support
-- Memory-efficient chunk-based recording
+- Captures the player with `captureStream()` and encodes via the WebCodecs API
+- Keeps encoded VP8 video and Opus audio chunks in a ring buffer, trimmed to the
+  configured duration on a shared wall-clock timeline
+- Muxes the buffered chunks into a WebM blob on demand using
+  [mediabunny](https://github.com/Vanilagy/mediabunny) — nothing is re-encoded at replay time
+- Multi-channel audio is downmixed to stereo before encoding
 
 ## License
 

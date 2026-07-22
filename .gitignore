@@ -1,3 +1,4 @@
 twitch-replay-extension.zip
 node_modules/
 dist/
+.DS_Store
