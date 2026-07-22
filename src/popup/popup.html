@@ -2,236 +2,397 @@
 <!DOCTYPE html>
 <html>
     <head>
+        <meta charset="utf-8" />
         <style>
+            :root {
+                --accent: #9147ff;
+                --accent-hover: #a970ff;
+                --bg: #ffffff;
+                --surface: #f7f7f8;
+                --border: #e3e3e6;
+                --text: #18181b;
+                --text-muted: #6b6b74;
+                --shadow: rgba(0, 0, 0, 0.06);
+            }
+
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --bg: #18181b;
+                    --surface: #1f1f23;
+                    --border: #2f2f35;
+                    --text: #efeff1;
+                    --text-muted: #adadb8;
+                    --shadow: rgba(0, 0, 0, 0.3);
+                }
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
             body {
-                width: 400px;
-                padding: 8px 15px 0px 15px;
-                font-family: Arial, sans-serif;
+                width: 380px;
+                margin: 0;
+                padding: 0 0 12px 0;
+                background: var(--bg);
+                color: var(--text);
+                font-family: "Inter", -apple-system, BlinkMacSystemFont,
+                    "Segoe UI", Roboto, sans-serif;
+                font-size: 13px;
+                line-height: 1.4;
             }
-            .config-item {
-                margin-bottom: 10px;
-            }
-            .toggle-label {
-                margin-right: 10px;
-            }
+
+            /* ---------- Header ---------- */
+
             .header {
                 display: flex;
-                justify-content: space-between;
                 align-items: center;
+                gap: 10px;
+                padding: 14px 16px;
+                background: linear-gradient(135deg, #9147ff, #6441a5);
+                color: #fff;
             }
-            .flex-container {
-                display: flex;
-                justify-content: start;
-                align-items: center;
+
+            .header img {
+                width: 26px;
+                height: 26px;
+                border-radius: 6px;
             }
-            label {
+
+            .header h1 {
+                margin: 0;
+                font-size: 15px;
+                font-weight: 600;
+                letter-spacing: 0.2px;
+            }
+
+            .header .status {
+                margin-left: auto;
+                font-size: 11px;
+                font-weight: 600;
+                opacity: 0;
+                transform: translateY(-3px);
+                transition: opacity 0.2s ease, transform 0.2s ease;
+            }
+
+            .header .status.visible {
+                opacity: 1;
+                transform: translateY(0);
+            }
+
+            /* ---------- Sections ---------- */
+
+            .section {
+                margin: 12px 12px 0 12px;
+                padding: 4px 12px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                box-shadow: 0 1px 2px var(--shadow);
+            }
+
+            .section-title {
                 display: block;
-                margin-bottom: 5px;
-                font-weight: bold;
-            }
-            input,
-            select {
-                width: 100%;
-                padding: 5px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-            }
-            .save-button {
-                background-color: #4caf50;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-                width: 100px;
-            }
-            .save-button:hover {
-                background-color: #45a049;
+                padding: 10px 2px 2px 2px;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.8px;
+                text-transform: uppercase;
+                color: var(--text-muted);
             }
 
-            .textfield-item-list {
+            .row {
+                padding: 10px 2px;
+                border-top: 1px solid var(--border);
+            }
+
+            .section-title + .row {
+                border-top: none;
+            }
+
+            .row-head {
                 display: flex;
                 align-items: center;
-                justify-content: space-between;
+                gap: 10px;
             }
 
-            .checkbox-item-list {
-                /* A grid with 2 columns first is align start second is align center */
+            label {
+                font-weight: 600;
+            }
+
+            .row-head label {
+                flex: 1;
+            }
+
+            .row-split {
                 display: grid;
-                grid-template-columns: 1.1fr 1fr;
-                align-items: center;
-            }
-
-            .checkbox-item-list .switch-item {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-
-            .checkbox-item {
-                display: flex;
-                align-items: center;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
             }
 
             .description {
-                padding-top: 4px;
-                padding-left: 4px;
-                font-size: 12px;
-                color: #666;
+                margin-top: 4px;
+                font-size: 11px;
+                color: var(--text-muted);
             }
 
-            /* Enable Button */
-            .toggleContainer {
-                position: relative;
-                display: grid;
-                grid-template-columns: repeat(2, 1fr);
-                width: fit-content;
-                border: 3px solid #343434;
-                border-radius: 20px;
-                background: #343434;
-                font-size: 12px;
-                font-weight: bold;
-                color: #343434;
-                cursor: pointer;
+            .value {
+                font-variant-numeric: tabular-nums;
+                font-weight: 600;
+                color: var(--accent);
             }
-            .toggleContainer::before {
+
+            /* ---------- Inputs ---------- */
+
+            input[type="number"],
+            input[type="text"],
+            select {
+                width: 100%;
+                margin-top: 6px;
+                padding: 6px 8px;
+                background: var(--bg);
+                color: var(--text);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                font-size: 13px;
+                font-family: inherit;
+            }
+
+            input[type="number"]:focus,
+            input[type="text"]:focus,
+            select:focus {
+                outline: none;
+                border-color: var(--accent);
+                box-shadow: 0 0 0 2px rgba(145, 71, 255, 0.2);
+            }
+
+            input[type="range"] {
+                width: 100%;
+                margin-top: 8px;
+                padding: 0;
+                border: none;
+                background: transparent;
+                accent-color: var(--accent);
+            }
+
+            /* ---------- Toggle switch ---------- */
+
+            .switch {
+                position: relative;
+                flex-shrink: 0;
+                width: 38px;
+                height: 21px;
+            }
+
+            .switch input {
+                opacity: 0;
+                width: 0;
+                height: 0;
+            }
+
+            .switch .slider {
+                position: absolute;
+                inset: 0;
+                background: #adadb8;
+                border-radius: 21px;
+                cursor: pointer;
+                transition: background 0.2s ease;
+            }
+
+            .switch .slider::before {
                 content: "";
                 position: absolute;
-                width: 50%;
-                height: 100%;
-                left: 0%;
-                border-radius: 20px;
-                background: white;
-                transition: all 0.3s;
+                top: 3px;
+                left: 3px;
+                width: 15px;
+                height: 15px;
+                background: #fff;
+                border-radius: 50%;
+                box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+                transition: transform 0.2s ease;
             }
-            .toggleCheckbox:checked + .toggleContainer::before {
-                left: 50%;
+
+            .switch input:checked + .slider {
+                background: var(--accent);
             }
-            .toggleContainer div {
-                padding: 4px;
+
+            .switch input:checked + .slider::before {
+                transform: translateX(17px);
+            }
+
+            .switch input:focus-visible + .slider {
+                box-shadow: 0 0 0 2px rgba(145, 71, 255, 0.4);
+            }
+
+            /* ---------- Footer ---------- */
+
+            .footer {
+                padding: 12px 16px 0 16px;
+                font-size: 11px;
+                color: var(--text-muted);
                 text-align: center;
-                z-index: 1;
             }
-            .toggleCheckbox {
-                display: none;
-            }
-            .toggleCheckbox:checked + .toggleContainer div:first-child {
-                color: white;
-                transition: color 0.3s;
-            }
-            .toggleCheckbox:checked + .toggleContainer div:last-child {
-                color: #343434;
-                transition: color 0.3s;
-            }
-            .toggleCheckbox + .toggleContainer div:first-child {
-                color: #343434;
-                transition: color 0.3s;
-            }
-            .toggleCheckbox + .toggleContainer div:last-child {
-                color: white;
-                transition: color 0.3s;
+
+            .footer kbd {
+                padding: 1px 5px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                font-family: inherit;
+                font-size: 10px;
             }
         </style>
     </head>
     <body>
         <div class="header">
+            <img src="icons/icon32.png" alt="" />
             <h1>Instant Twitch Replay</h1>
-            <!-- <button class="save-button" id="saveConfig">
-                Save
-            </button> -->
+            <span class="status" id="saveStatus">Saved</span>
         </div>
+
         <div id="config-form">
-            <div class="config-item checkbox-item-list">
-                <label for="enableToggle" class="toggle-label"
-                    >Disable the recording</label
-                >
-                <div class="switch-item">
-                    <input type="checkbox" id="enableToggle" class="toggleCheckbox" />
-                    <label for="enableToggle" class="toggleContainer">
-                        <div>Disabled</div>
-                        <div>Enabled</div>
-                    </label>
+            <!-- Recording -->
+            <div class="section">
+                <span class="section-title">Recording</span>
+
+                <div class="row">
+                    <div class="row-head">
+                        <label for="enableToggle">Enable recording</label>
+                        <span class="switch">
+                            <input type="checkbox" id="enableToggle" />
+                            <span class="slider"></span>
+                        </span>
+                    </div>
+                    <div class="description">
+                        Continuously buffer the stream so a replay is always
+                        ready.
+                    </div>
+                </div>
+
+                <div class="row">
+                    <label for="recordingDuration"
+                        >Buffer length
+                        <span class="value" id="recordingDurationValue"
+                            >30s</span
+                        ></label
+                    >
+                    <input
+                        type="range"
+                        id="recordingDuration"
+                        min="1"
+                        max="60"
+                        step="1"
+                    />
+                    <div class="description">
+                        How far back you can replay. Longer buffers use more
+                        memory. Maximum 60 seconds.
+                    </div>
                 </div>
             </div>
 
-            <div class="config-item">
-                <label for="recordingDuration"
-                    >Recording Duration (seconds):</label
-                >
-                <input type="number" id="recordingDuration" min="1" max="60" />
-                <div class="description">
-                    Length of the buffer. <br />
-                    More duration require more memory.
-                    <small>Maximum 60 seconds</small>
+            <!-- Audio -->
+            <div class="section">
+                <span class="section-title">Audio</span>
+
+                <div class="row">
+                    <label for="volumeReduction"
+                        >Stream volume during replay
+                        <span class="value" id="volumeReductionValue"
+                            >5%</span
+                        ></label
+                    >
+                    <input
+                        type="range"
+                        id="volumeReduction"
+                        min="0"
+                        max="100"
+                        step="1"
+                    />
+                    <div class="description">
+                        The live stream is turned down to this level while the
+                        replay is playing.
+                    </div>
                 </div>
-            </div>
-            <div class="config-item textfield-item-list">
-                <div>
-                    <label for="defaultWrapperWidth">Wrapper Width:</label>
-                    <input type="text" id="defaultWrapperWidth" />
-                    <div class="description">Width of the wrapper.</div>
+
+                <div class="row">
+                    <label for="replayVolumeMode">Replay volume</label>
+                    <select id="replayVolumeMode">
+                        <option value="fixed">Use a fixed volume</option>
+                        <option value="stream">Match the stream volume</option>
+                    </select>
                 </div>
-                <div>
-                    <label for="roundedCorners">Rounded Corners (px):</label>
-                    <input type="number" id="roundedCorners" min="0" />
-                    <div class="description">Radius of the window corners.</div>
-                </div>
-            </div>
-            <div class="config-item">
-                <label for="volumeReduction">Volume Reduction:</label>
-                <input
-                    type="number"
-                    id="volumeReduction"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                />
-                <div class="description">
-                    Volume reduction of the stream during the playback. <br />
-                    0.5 means 50% volume reduction.
+
+                <div class="row" id="replayVolumeItem">
+                    <label for="replayVolume"
+                        >Replay volume level
+                        <span class="value" id="replayVolumeValue"
+                            >100%</span
+                        ></label
+                    >
+                    <input
+                        type="range"
+                        id="replayVolume"
+                        min="0"
+                        max="100"
+                        step="1"
+                    />
                 </div>
             </div>
 
-            <div class="config-item checkbox-item-list">
-                <label for="useStorage" class="toggle-label"
-                    >Remeber last placed position of replay window</label
-                >
-                <div class="switch-item">
-                    <input type="checkbox" id="useStorage" class="toggleCheckbox" />
-                    <label for="useStorage" class="toggleContainer">
-                        <div>Disabled</div>
-                        <div>Enabled</div>
-                    </label>
+            <!-- Replay window -->
+            <div class="section">
+                <span class="section-title">Replay window</span>
+
+                <div class="row row-split">
+                    <div>
+                        <label for="defaultWrapperWidth">Width</label>
+                        <input type="text" id="defaultWrapperWidth" />
+                    </div>
+                    <div>
+                        <label for="roundedCorners">Corner radius (px)</label>
+                        <input type="number" id="roundedCorners" min="0" />
+                    </div>
                 </div>
-            </div>
 
-
-            <div class="config-item checkbox-item-list">
-                <label for="showBadge" class="toggle-label"
-                    >Show status badge in the top left corner</label
-                >
-                <div class="switch-item">
-                    <input type="checkbox" id="showBadge" class="toggleCheckbox" />
-                    <label for="showBadge" class="toggleContainer">
-                        <div>Disabled</div>
-                        <div>Enabled</div>
-                    </label>
+                <div class="row">
+                    <div class="row-head">
+                        <label for="useStorage">Remember position and size</label>
+                        <span class="switch">
+                            <input type="checkbox" id="useStorage" />
+                            <span class="slider"></span>
+                        </span>
+                    </div>
                 </div>
-            </div>
 
-            <div class="config-item checkbox-item-list">
-                <label for="autoClose" class="toggle-label"
-                    >Automatically close replay window after playback ended.</label
-                >
-                <div class="switch-item">
-                    <input type="checkbox" id="autoClose" class="toggleCheckbox" />
-                    <label for="autoClose" class="toggleContainer">
-                        <div>Disabled</div>
-                        <div>Enabled</div>
-                    </label>
+                <div class="row">
+                    <div class="row-head">
+                        <label for="autoClose">Close when playback ends</label>
+                        <span class="switch">
+                            <input type="checkbox" id="autoClose" />
+                            <span class="slider"></span>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="row-head">
+                        <label for="showBadge">Show recording badge</label>
+                        <span class="switch">
+                            <input type="checkbox" id="showBadge" />
+                            <span class="slider"></span>
+                        </span>
+                    </div>
+                    <div class="description">
+                        Status indicator in the top left corner of the player.
+                    </div>
                 </div>
             </div>
         </div>
+
+        <div class="footer">
+            Press <kbd>←</kbd> on the player to replay · <kbd>Esc</kbd> to close
+        </div>
+
         <script src="popup.bundle.js"></script>
     </body>
 </html>

@@ -10,6 +10,7 @@ Link to the Chrome Web Store: https://chromewebstore.google.com/detail/instant-t
 - Picture-in-picture style replay window
 - Resizable replay window
 - Automatic volume reduction of main stream during replay
+- Configurable replay volume: a fixed percentage or matching the stream's volume
 - Multiple buffer system for reliable capture
 - Supports various video codecs (VP9, VP8)
 

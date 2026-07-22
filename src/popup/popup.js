@@ -1,20 +1,44 @@
 // popup.js
 document.addEventListener('DOMContentLoaded', function() {
+    // Fall back to the default only when the value was never stored, so that
+    // legitimate zero values survive a reload
+    function withDefault(value, fallback) {
+        return value !== undefined && value !== null ? value : fallback;
+    }
+
     // Load current configuration
     chrome.storage.sync.get(['extensionConfig'], function(result) {
         const config = result.extensionConfig || {};
-        
+
         // Populate form with current values
-        document.getElementById('recordingDuration').value = config.recordingDuration || 30;
-        document.getElementById('defaultWrapperWidth').value = config.defaultWrapperWidth || '600px';
-        document.getElementById('volumeReduction').value = config.volumeReduction || 0.05;
-        document.getElementById('roundedCorners').value = config.roundedCorners || 4;
+        document.getElementById('recordingDuration').value = withDefault(config.recordingDuration, 30);
+        document.getElementById('defaultWrapperWidth').value = withDefault(config.defaultWrapperWidth, '600px');
+        document.getElementById('volumeReduction').value = Math.round(withDefault(config.volumeReduction, 0.05) * 100);
+        document.getElementById('replayVolumeMode').value = withDefault(config.replayVolumeMode, 'fixed');
+        document.getElementById('replayVolume').value = Math.round(withDefault(config.replayVolume, 1) * 100);
+        document.getElementById('roundedCorners').value = withDefault(config.roundedCorners, 4);
         document.getElementById('useStorage').checked = config.useStorage !== false;
         document.getElementById('enableToggle').checked = config.enableToggle !== false;
         document.getElementById('autoClose').checked = config.autoClose !== false;
         document.getElementById('showBadge').checked = config.showBadge !== false;
+
+        updateLabels();
     });
 
+    // Keep the live value labels in sync and show the replay level slider only
+    // when a fixed volume is used
+    function updateLabels() {
+        const mode = document.getElementById('replayVolumeMode').value;
+        document.getElementById('replayVolumeItem').style.display =
+            mode === 'fixed' ? '' : 'none';
+
+        document.getElementById('recordingDurationValue').textContent =
+            `${document.getElementById('recordingDuration').value}s`;
+        document.getElementById('volumeReductionValue').textContent =
+            `${document.getElementById('volumeReduction').value}%`;
+        document.getElementById('replayVolumeValue').textContent =
+            `${document.getElementById('replayVolume').value}%`;
+    }
 
     // Debounce function to limit how often we save configuration
     function debounce(func, wait) {
@@ -29,12 +53,22 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
+    let statusTimeout;
+    function showSaved() {
+        const status = document.getElementById('saveStatus');
+        status.classList.add('visible');
+        clearTimeout(statusTimeout);
+        statusTimeout = setTimeout(() => status.classList.remove('visible'), 1500);
+    }
+
     // Save configuration
     function saveConfiguration() {
         const newConfig = {
             recordingDuration: parseInt(document.getElementById('recordingDuration').value),
             defaultWrapperWidth: document.getElementById('defaultWrapperWidth').value,
-            volumeReduction: parseFloat(document.getElementById('volumeReduction').value),
+            volumeReduction: parseInt(document.getElementById('volumeReduction').value) / 100,
+            replayVolumeMode: document.getElementById('replayVolumeMode').value,
+            replayVolume: parseInt(document.getElementById('replayVolume').value) / 100,
             roundedCorners: parseInt(document.getElementById('roundedCorners').value),
             useStorage: document.getElementById('useStorage').checked,
             storageKey: "replayUIPositionAndSize",
@@ -58,16 +92,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             });
 
-            // Visual feedback
-            const headerTitle = document.querySelector('.header h1');
-            headerTitle.textContent = 'Settings Saved!';
-            setTimeout(() => {
-                headerTitle.textContent = 'Instant Twitch Replay';
-            }, 1500);
+            showSaved();
         });
     }
 
     const debouncedSaveConfiguration = debounce(saveConfiguration, 500);
 
-    document.getElementById('config-form').addEventListener('input', debouncedSaveConfiguration);
+    const form = document.getElementById('config-form');
+    form.addEventListener('input', debouncedSaveConfiguration);
+    // Immediate (non debounced) feedback while dragging sliders
+    form.addEventListener('input', updateLabels);
+    document.getElementById('replayVolumeMode').addEventListener('change', updateLabels);
 });

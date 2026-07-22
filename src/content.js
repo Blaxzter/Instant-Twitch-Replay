@@ -8,6 +8,8 @@ let CONFIG = {
     videoBitrate: 2500000,
     defaultWrapperWidth: "600px",
     volumeReduction: 0.05,
+    replayVolumeMode: "fixed", // "fixed" = use replayVolume, "stream" = inherit stream volume
+    replayVolume: 1.0, // 0-1, replay playback volume when mode is "fixed"
     storageKey: "replayUIPositionAndSize", // Key for localStorage
     useStorage: true, // Save position and size to localStorage
     autoClose: true, // Close replay UI on video end
@@ -339,6 +341,7 @@ class ReplayUI {
         this.initialWidth = 0;
         this.initialHeight = 0;
         this.previousVolume = null;
+        this.previousMuted = null;
     }
 
     async show(blob) {
@@ -349,14 +352,36 @@ class ReplayUI {
         // Load and apply saved position and size
         this.loadPositionAndSize();
 
+        const originalVideo = document.querySelector("video");
+        if (originalVideo) {
+            this.previousVolume = originalVideo.volume;
+            this.previousMuted = originalVideo.muted;
+        }
+
+        // Set the replay volume before the source is attached so playback
+        // never starts at the browser default volume
+        this.applyReplayVolume();
+
         this.setupEventListeners(url);
         this.setupDragListeners();
         document.body.appendChild(this.elements.wrapper);
 
-        const originalVideo = document.querySelector("video");
         if (originalVideo) {
-            this.previousVolume = originalVideo.volume;
             originalVideo.volume = CONFIG.volumeReduction;
+        }
+    }
+
+    applyReplayVolume() {
+        if (CONFIG.replayVolumeMode === "stream") {
+            // Mirror whatever the stream was playing at before it got ducked
+            this.elements.video.volume =
+                this.previousVolume !== null ? this.previousVolume : 1;
+            this.elements.video.muted = this.previousMuted === true;
+        } else {
+            const volume = Number(CONFIG.replayVolume);
+            this.elements.video.volume = Number.isFinite(volume)
+                ? Math.min(1, Math.max(0, volume))
+                : 1;
         }
     }
 
@@ -699,7 +724,7 @@ class ReplayUI {
         URL.revokeObjectURL(url);
 
         const originalVideo = document.querySelector("video");
-        if (originalVideo && this.previousVolume !== undefined) {
+        if (originalVideo && this.previousVolume !== null) {
             originalVideo.volume = this.previousVolume;
         }
 
